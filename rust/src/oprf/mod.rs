@@ -11,17 +11,29 @@ use super::errors::{err_internal,err_public_key_not_found,err_proof_not_found,er
 
 const OPRF_DST: &'static str = "oprf_derive_output";
 
+/// The `SecretKey` struct provides a wrapper around a number of bytes of
+/// varying length.
 pub struct SecretKey(Vec<u8>);
+
+/// The `PublicKey` object provides a wrapper around a type `T` that is defined
+/// to be the type of group elements used in instantiating a group of the form
+/// `PrimeOrderGroup<T,H>`.
 #[derive(Clone)]
 pub struct PublicKey<T>(T);
 
 impl SecretKey {
+    /// Constructor for `SecretKey<T,H>` for an underlying group instance of the
+    /// form `PrimeOrderGroup<T,H>`.
     pub fn new<T,H>(pog: &PrimeOrderGroup<T,H>) -> Self {
         let mut buf: Vec<u8> = Vec::new();
         (pog.uniform_bytes)(&mut buf);
         SecretKey(buf)
     }
 
+    /// Computes the corresponding `PublicKey<T>` object for a `SecretKey`
+    /// object associated with `PrimeOrderGroup<T,H>`. Essentially computes
+    /// `g*k` where `g` is the fixed generator of the group, and where `k` is
+    /// the scaalr value of the secret key.
     pub fn pub_key<T,H>(&self, pog: &PrimeOrderGroup<T,H>) -> PublicKey<T>
             where T: Clone {
         PublicKey((pog.scalar_mult)(&pog.generator, &self.0))
