@@ -11,9 +11,9 @@ use super::super::utils::copy_into;
 use std::io::Error;
 use super::super::errors::err_finalization;
 
-/// The Supported trait defines the PrimeOrderGroup<T,H> instantiations that are
-/// currently supported by the VOPRF implementation. Currently, only
-/// T=curve25519_dalek::ristretto::RistrettoPoint and H=sha2::Sha512 are
+/// The Supported trait defines the `PrimeOrderGroup<T,H>` instantiations that
+/// are currently supported by the VOPRF implementation. Currently, only
+/// `T=curve25519_dalek::ristretto::RistrettoPoint` and `H=sha2::Sha512` are
 /// supported. This corresponds to an experimental ristretto255 ciphersuite that
 /// is not defined in draft-irth-cfrg-voprf-02.
 pub trait Supported {
@@ -33,10 +33,10 @@ fn get_name<S: Supported>(x: &S) -> String {
 
 /// The Ciphersuite struct gives access to the core functionality provided by a
 /// VOPRF ciphersuite (see:
-/// https://tools.ietf.org/html/draft-irtf-cfrg-voprf-02#section-6). In essence,
-/// this is the PrimeOrderGroup instantiation that is used, along with ancillary
-/// functions for hashing and manipulating data associated the group that is
-/// used. If the parameter `verifiable` is true, then the ciphersuite
+/// <https://tools.ietf.org/html/draft-irtf-cfrg-voprf-02#section-6>). In
+/// essence, this is the PrimeOrderGroup instantiation that is used, along with
+/// ancillary functions for hashing and manipulating data associated the group
+/// that is used. If the parameter `verifiable` is true, then the ciphersuite
 /// corresponds to a VOPRF instance, and otherwise merely an OPRF.
 ///
 /// # Example

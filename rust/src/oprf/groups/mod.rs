@@ -2,11 +2,11 @@ pub mod ristretto;
 
 use std::io::Error;
 
-/// The PrimeOrderGroup struct defines the behaviour expected from an additive
-/// group with prime order instantiation. The template variable T corresponds to
-/// the type of group elements that are used (for example, these could be points
-/// taken from an elliptic curve), and H defines an accompanying hash function
-/// implementation.
+/// The `PrimeOrderGroup` struct defines the behaviour expected from an additive
+/// group with prime order instantiation. The template variable `T` corresponds
+/// to the type of group elements that are used (for example, these could be
+/// points taken from an elliptic curve), and `H` defines an accompanying hash
+/// function implementation.
 ///
 /// # Example functionality (using ristretto_255):
 /// ```
@@ -66,15 +66,15 @@ use std::io::Error;
 /// h.input(b"some_data");
 /// ```
 ///
-/// Each PrimeOrderGroup also defines methods for computing DLEQ proofs (see:
-/// https://tools.ietf.org/html/draft-irtf-cfrg-voprf-02#section-5). The proofs
-/// are dependent on scalar operations. These operations are implemeneted
+/// Each `PrimeOrderGroup` also defines methods for computing DLEQ proofs (see:
+/// <https://tools.ietf.org/html/draft-irtf-cfrg-voprf-02#section-5>). The
+/// proofs are dependent on scalar operations. These operations are implemeneted
 /// differently depending on the type of scalars used.
 ///
 /// DLEQ proof objects allow someone to generate proof objects that attest to
-/// the fact that y = k*g and z = k*m share the same discrete logarithm k in
-/// zero-knowledge, where g is the fixed group generator (i.e. without revealing
-/// k). DLEQ proof generation and verification is as follows:
+/// the fact that `y = k*g` and `z = k*m` share the same discrete logarithm `k`
+/// in zero-knowledge, where `g` is the fixed group generator (i.e. without
+/// revealing `k`). DLEQ proof generation and verification is as follows:
 ///
 /// ```
 /// use voprf_poc_rs::oprf::groups::PrimeOrderGroup;
@@ -93,8 +93,8 @@ use std::io::Error;
 /// ```
 ///
 /// There are also "batch" methods that allow proving the same statement above
-/// where m = vec![m_0, m_1, m_2, ...], z = vec![z_0, z_1, z_2] where z_i =
-/// k*m_i for each i:
+/// where `m = vec![m_0, m_1, m_2, ...]`, `z = vec![z_0, z_1, z_2]` where `z_i =
+/// k*m_i` for each `i`:
 ///
 /// ```
 /// use voprf_poc_rs::oprf::groups::PrimeOrderGroup;

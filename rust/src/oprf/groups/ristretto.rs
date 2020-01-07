@@ -19,11 +19,11 @@ const RISTRETTO_BYTE_LENGTH: usize = 32;
 /// draft-irtf-cfrg-voprf-02. This instantiation is only intended as an
 /// experiment.
 ///
-/// Constructs an instance of PrimeOrderGroup using the implied group
+/// Constructs an instance of `PrimeOrderGroup` using the implied group
 /// constructed around the implementation of the ristretto255 prime-order group
 /// (https://tools.ietf.org/html/draft-hdevalence-cfrg-ristretto-01) found in
 /// curve25519_dalek (https://doc.dalek.rs/curve25519_dalek/ristretto). Group
-/// operations involving scalars are use the curev25519_dalek::scalar::Scalar
+/// operations involving scalars are use the `curve25519_dalek::scalar::Scalar`
 /// struct provided by the same crate.
 impl PrimeOrderGroup<RistrettoPoint,Sha512> {
     pub fn ristretto_255() -> PrimeOrderGroup<RistrettoPoint,Sha512> {
@@ -165,7 +165,7 @@ fn ristretto_compute_composites(seed: &[u8], inputs: &[RistrettoPoint], evals: &
 }
 
 // generates a seed for deriving coefficients that are used to construct the
-// composite RistrettoPoint objects used in batch DLEQ proofs, moves the result
+// composite `RistrettoPoint` objects used in batch DLEQ proofs, moves the result
 // into the provided output buffer
 fn ristretto_batch_dleq_seed(y: &RistrettoPoint, m: &[RistrettoPoint], z: &[RistrettoPoint], out: &mut Vec<u8>) {
     let mut inputs: Vec<&RistrettoPoint> = Vec::new();
@@ -214,7 +214,7 @@ fn ristretto_convert_slice_to_fixed(x: &[u8]) -> [u8; RISTRETTO_BYTE_LENGTH] {
     inp_bytes
 }
 
-// Recovers a Scalar object from a slice
+// Recovers a `Scalar` object from a slice
 fn ristretto_scalar_from_slice(x: &[u8]) -> Scalar {
     Scalar::from_bytes_mod_order(ristretto_convert_slice_to_fixed(x))
 }
