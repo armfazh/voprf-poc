@@ -100,6 +100,7 @@ impl PrimeOrderGroup<RistrettoPoint,Sha512> {
     }
 }
 
+// generates a DLEQ proof object for RistrettoPoint objects
 fn ristretto_dleq_gen(key: &[u8], pub_key: &RistrettoPoint, input: &RistrettoPoint, eval: &RistrettoPoint) -> [Vec<u8>; 2] {
     let mut out: Vec<u8> = Vec::new();
     ristretto_sample_uniform_bytes(&mut out);
@@ -113,6 +114,7 @@ fn ristretto_dleq_gen(key: &[u8], pub_key: &RistrettoPoint, input: &RistrettoPoi
     [c, s_sc.as_bytes().to_vec()]
 }
 
+// verifies a DLEQ proof object
 fn ristretto_dleq_vrf(pub_key: &RistrettoPoint, input: &RistrettoPoint, eval: &RistrettoPoint, proof: &[Vec<u8>; 2]) -> bool {
     let g = RISTRETTO_BASEPOINT_POINT;
     let c_proof = &proof[0];
@@ -130,6 +132,7 @@ fn ristretto_dleq_vrf(pub_key: &RistrettoPoint, input: &RistrettoPoint, eval: &R
     c_proof == &c_vrf
 }
 
+// computes composite ristretto255 points that are used in batch DLEQ proofs
 // TODO: add these to the impl of some utility struct?
 fn ristretto_compute_composites(seed: &[u8], inputs: &[RistrettoPoint], evals: &[RistrettoPoint]) -> [RistrettoPoint; 2] {
     // init these with dummy values
@@ -161,6 +164,9 @@ fn ristretto_compute_composites(seed: &[u8], inputs: &[RistrettoPoint], evals: &
     [comp_m, comp_z]
 }
 
+// generates a seed for deriving coefficients that are used to construct the
+// composite RistrettoPoint objects used in batch DLEQ proofs, moves the result
+// into the provided output buffer
 fn ristretto_batch_dleq_seed(y: &RistrettoPoint, m: &[RistrettoPoint], z: &[RistrettoPoint], out: &mut Vec<u8>) {
     let mut inputs: Vec<&RistrettoPoint> = Vec::new();
     inputs.push(y);
@@ -169,6 +175,8 @@ fn ristretto_batch_dleq_seed(y: &RistrettoPoint, m: &[RistrettoPoint], z: &[Rist
     ristretto_dleq_hash(&inputs, out)
 }
 
+// hash inputs points for DLEQ proofs, moves the result into the provided output
+// buffer
 fn ristretto_dleq_hash(to_hash: &[&RistrettoPoint], out: &mut Vec<u8>) {
     let mut hash = ristretto_hash();
     let mut ser: Vec<u8> = Vec::new();
@@ -180,27 +188,33 @@ fn ristretto_dleq_hash(to_hash: &[&RistrettoPoint], out: &mut Vec<u8>) {
     copy_into(&hash.result(), out);
 }
 
+// compresses RistrettoPoints into CompressedRistretto objects ansd moves the
+// result into the provided output buffer
 fn ristretto_serialize(p: &RistrettoPoint, ser: &mut Vec<u8>) {
     let cmp = p.compress();
     copy_into(&cmp.to_bytes(), ser);
 }
 
+// returns the associated hash function (SHA512) for working with the
+// ristretto255 prime-order group
 fn ristretto_hash() -> Sha512 {
     Sha512::new()
 }
 
-// ristretto utility functions
+// moves RISTRETTO_BYTE_LENGTH uniformly sampled bytes into the provided output buffer
 fn ristretto_sample_uniform_bytes(out: &mut Vec<u8>) {
     rand_bytes(RISTRETTO_BYTE_LENGTH, out)
 }
 
-fn ristretto_convert_slice_to_fixed(x: &[u8]) -> [u8; 32] {
-    let mut inp_bytes = [0; 32];
+// converts a slice into an array of size RISTRETTO_BYTE_LENGTH
+fn ristretto_convert_slice_to_fixed(x: &[u8]) -> [u8; RISTRETTO_BYTE_LENGTH] {
+    let mut inp_bytes = [0; RISTRETTO_BYTE_LENGTH];
     let random_bytes = &x[..inp_bytes.len()];
     inp_bytes.copy_from_slice(random_bytes);
     inp_bytes
 }
 
+// Recovers a Scalar object from a slice
 fn ristretto_scalar_from_slice(x: &[u8]) -> Scalar {
     Scalar::from_bytes_mod_order(ristretto_convert_slice_to_fixed(x))
 }

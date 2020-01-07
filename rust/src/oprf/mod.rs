@@ -1,4 +1,4 @@
-mod ciphersuite;
+pub mod ciphersuite;
 pub mod groups;
 
 use groups::PrimeOrderGroup;

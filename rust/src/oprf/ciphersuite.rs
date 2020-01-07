@@ -36,9 +36,39 @@ fn get_name<S: Supported>(x: &S) -> String {
 /// https://tools.ietf.org/html/draft-irtf-cfrg-voprf-02#section-6). In essence,
 /// this is the PrimeOrderGroup instantiation that is used, along with ancillary
 /// functions for hashing and manipulating data associated the group that is
-/// used.
+/// used. If the parameter `verifiable` is true, then the ciphersuite
+/// corresponds to a VOPRF instance, and otherwise merely an OPRF.
 ///
-/// TODO: explain more!
+/// # Example
+///
+/// ```
+/// use voprf_poc_rs::oprf::groups::PrimeOrderGroup;
+/// use voprf_poc_rs::oprf::ciphersuite::Ciphersuite;
+///
+/// // create instance of Ciphersuite
+/// let pog  = PrimeOrderGroup::ristretto_255();
+/// let ciph = Ciphersuite::new(pog.clone(), false);
+///
+/// // encode bytes to group element
+/// let _ = ciph.h1(b"some_input");
+///
+/// // compute HMAC value
+/// let mut key: Vec<u8> = Vec::new();
+/// (pog.uniform_bytes)(&mut key);
+/// let _ = match ciph.h2(&key) {
+///     Ok(o) => o,
+///     Err(e) => panic!(e)
+/// };
+///
+/// // compute h3() and h4() hash outputs
+/// let mut out_3: Vec<u8> = Vec::new();
+/// let mut out_4: Vec<u8> = Vec::new();
+/// let _ = ciph.h3(b"h3_input_bytes", &mut out_3);
+/// let _ = ciph.h4(b"h4_input_bytes", &mut out_4);
+///
+/// // get access to HKDF instance as specified in utils::hkdf::Hkdf;
+/// let hkdf = ciph.h5();
+/// ```
 #[derive(Clone)]
 pub struct Ciphersuite<T,H>
         where PrimeOrderGroup<T,H>: Clone {
@@ -51,7 +81,15 @@ impl<T,H> Ciphersuite<T,H>
         where PrimeOrderGroup<T,H>: Supported, T: Clone, H: Default
         + digest::Input + digest::BlockInput + digest::FixedOutput
         + digest::Reset + Clone {
-    // constructor for the ciphersuite
+
+    /// Constructor for the Ciphersuite object
+    ///
+    /// # Arguments
+    ///
+    /// * `pog`: An instance of a PrimeOrderGroup object, such as
+    ///   `voprf_poc_rs::oprf::groups::PrimeOrderGroup::ristretto255`.
+    /// * `verifiable`: A bool parameter indicating whether the ciphersuite
+    ///   corresponds to a VOPRF instantiation, or not.
     pub fn new(pog: PrimeOrderGroup<T,H>, verifiable: bool) -> Ciphersuite<T,H> {
         let mut name = String::from("");
         match verifiable {
@@ -66,12 +104,27 @@ impl<T,H> Ciphersuite<T,H>
         }
     }
 
-    // h1
+    /// Provides access to the mechanism for deterministically mapping a
+    /// sequence of bytes to an element of the group. This process should not
+    /// reveal the discrete logarithm of the group element with respect to the
+    /// fixed generator of the underlying group.
+    ///
+    /// # Arguments
+    ///
+    /// * `buf`: the sequence of bytes to encode as a curve point
     pub fn h1(&self, buf: &[u8]) -> T {
         (self.pog.encode_to_group)(buf)
     }
 
-    // h2
+    /// Provides access to the HMAC algorithm that is used in running
+    /// [OPRF_Finalize](https://tools.ietf.org/html/draft-irtf-cfrg-voprf-02#section-4.5.5)
+    /// and
+    /// [VOPRF_Finalize](https://tools.ietf.org/html/draft-irtf-cfrg-voprf-02#section-4.6.5).
+    ///
+    ///
+    /// # Arguments
+    ///
+    /// * `key`: the sequence of bytes that is used as the HMAC key
     pub fn h2(&self, key: &[u8]) -> Result<Hmac<H>, Error> {
         match Hmac::<H>::new_varkey(key) {
             Ok(mac) => {
@@ -81,7 +134,8 @@ impl<T,H> Ciphersuite<T,H>
         }
     }
 
-    // hash_generic
+    /// a private function used for evaluating the hash function associated the
+    /// PrimeOrderGroup object.
     fn hash_generic(&self, inp: &[u8], out: &mut Vec<u8>) {
         let mut hash_fn = (self.pog.hash)();
         hash_fn.input(inp);
@@ -89,16 +143,25 @@ impl<T,H> Ciphersuite<T,H>
         copy_into(&res, out);
     }
 
-    // h3
+    /// Provides access to the hash function associated with the PrimeOrderGroup
+    /// and moves the output bytes into the provided buffer. Used in DLEQ proof
+    /// generation/verification.
+    ///
+    /// # Arguments
+    ///
+    /// * `inp`: the sequence of bytes that is input to the hash algorithm
+    /// * `out`: the output bytes
     pub fn h3(&self, inp: &[u8], out: &mut Vec<u8>) {
         self.hash_generic(inp, out)
     }
 
-    // h4
+    /// same as h3, used in batched DLEQ proof generation/verification
     pub fn h4(&self, inp: &[u8], out: &mut Vec<u8>) {
         self.hash_generic(inp, out)
     }
 
+    /// Returns an instance of the HKDF primitive specified in
+    /// https://tools.ietf.org/html/draft-irtf-cfrg-voprf-02#section-6.
     pub fn h5(&self) -> Hkdf {
         Hkdf{}
     }

@@ -1,6 +1,6 @@
 pub mod oprf;
-mod utils;
-mod errors;
+pub mod utils;
+pub mod errors;
 
 #[cfg(test)]
 mod tests {
