@@ -8,10 +8,11 @@ use std::io::Error;
 /// taken from an elliptic curve), and H defines an accompanying hash function
 /// implementation.
 ///
-/// Example functionality (using ristretto_255):
+/// # Example functionality (using ristretto_255):
 /// ```
+/// use voprf_poc_rs::oprf::groups::PrimeOrderGroup;
 /// // create group instantiation
-/// let pog = PrimeOrderGroup<RistrettoPoint,Sha512>::ristretto_255();
+/// let pog = PrimeOrderGroup::ristretto_255();
 ///
 /// // fixed group generator
 /// let g = pog.generator;
@@ -23,7 +24,7 @@ use std::io::Error;
 /// // hash bytes deterministically to an element of the group without revealing
 /// // the discrete logarithm of the output element relative to the fixed
 /// // generator.
-/// let _ = (pog.encode_to_group)(&b"some_input_bytes");
+/// let _ = (pog.encode_to_group)(b"some_input_bytes");
 ///
 /// // perform additive group operation (returns the group element representing
 /// // re1 + re2
@@ -42,12 +43,15 @@ use std::io::Error;
 ///
 /// // serialize and deserialize group elements
 /// let mut ser: Vec<u8> = Vec::new();
-/// (pog.serialize)(&re1, &mut ser)l
-/// let deser = (pog.deserialize)(&mut ser);
+/// (pog.serialize)(&re1, &mut ser);
+/// let deser = match  (pog.deserialize)(&mut ser) {
+///     Ok(p) => p,
+///     Err(e) => panic!(e)
+/// };
 ///
 /// // check two points are equal
-/// let b1 = (pog.is_equal)(re1, re2) // should return false
-/// let b2 = (pog.is_equal)(re1, deser) // should return true
+/// let b1 = (pog.is_equal)(&re1, &re2); // should return false
+/// let b2 = (pog.is_equal)(&re1, &deser); // should return true
 /// ```
 ///
 /// Note that each instance of PrimeOrderGroup comes with its own instance of a
@@ -55,10 +59,11 @@ use std::io::Error;
 /// evaluations can be accessed by running:
 ///
 /// ```
-/// let pog = PrimeOrderGroup<RistrettoPoint,Sha512>::ristretto_255();
-/// let h = (pog.hash)();
-/// h.input(<data>);
-/// ...
+/// use digest::Digest;
+/// use voprf_poc_rs::oprf::groups::PrimeOrderGroup;
+/// let pog = PrimeOrderGroup::ristretto_255();
+/// let mut h = (pog.hash)();
+/// h.input(b"some_data");
 /// ```
 ///
 /// Each PrimeOrderGroup also defines methods for computing DLEQ proofs (see:
@@ -72,19 +77,19 @@ use std::io::Error;
 /// k). DLEQ proof generation and verification is as follows:
 ///
 /// ```
-/// let pog = PrimeOrderGroup<RistrettoPoint,Sha512>::ristretto_255();
-/// let g = pog.generator;
+/// use voprf_poc_rs::oprf::groups::PrimeOrderGroup;
+/// let pog = PrimeOrderGroup::ristretto_255();
 /// let m = (pog.random_element)();
 ///
 /// // generate scalar value
-/// let k: Vec<u8> = Vec::new();
+/// let mut k: Vec<u8> = Vec::new();
 /// (pog.uniform_bytes)(&mut k);
-/// let y = (pog.scalar_mult)(&g, &k);
+/// let y = (pog.scalar_mult)(&pog.generator, &k);
 /// let z = (pog.scalar_mult)(&m, &k);
 ///
 /// // generate proof object
-/// let proof = (pog.dleq_generate)(&k, &g, &y, &m, &z);
-/// let b = (pog.dleq_verify)(&g, &y, &m, &z); // should return true
+/// let proof = (pog.dleq_generate)(&k, &y, &m, &z);
+/// let b = (pog.dleq_verify)(&y, &m, &z, &proof); // should return true
 /// ```
 ///
 /// There are also "batch" methods that allow proving the same statement above
@@ -92,24 +97,23 @@ use std::io::Error;
 /// k*m_i for each i:
 ///
 /// ```
-/// let pog = PrimeOrderGroup<RistrettoPoint,Sha512>::ristretto_255();
-/// let g = pog.generator;
-/// let k: Vec<u8> = Vec::new();
+/// use voprf_poc_rs::oprf::groups::PrimeOrderGroup;
+/// let pog = PrimeOrderGroup::ristretto_255();
+/// let mut k: Vec<u8> = Vec::new();
 /// (pog.uniform_bytes)(&mut k);
-/// let y = (pog.scalar_mult)(&g, &k);
+/// let y = (pog.scalar_mult)(&pog.generator, &k);
 ///
-/// let inputs = Vec::new();
-/// let outs = Vec::new();
+/// let mut inputs = Vec::new();
+/// let mut outs = Vec::new();
 /// for _ in 0..5 {
 ///     let m = (pog.random_element)();
 ///     inputs.push(m);
 ///     outs.push((pog.scalar_mult)(&m, &k));
 /// }
 ///
-///
 /// // generate batched proof object
-/// let proof = (pog.batch_dleq_generate)(&k, &g, &y, &inputs, &outs);
-/// let b = (pog.dleq_verify)(&g, &y, &inputs, &outs); // should return true
+/// let proof = (pog.batch_dleq_generate)(&k, &y, &inputs, &outs);
+/// let b = (pog.batch_dleq_verify)(&y, &inputs, &outs, &proof); // should return true
 /// ```
 ///
 /// Notes:
