@@ -26,6 +26,15 @@ const RISTRETTO_BYTE_LENGTH: usize = 32;
 /// operations involving scalars are use the `curve25519_dalek::scalar::Scalar`
 /// struct provided by the same crate.
 impl PrimeOrderGroup<RistrettoPoint,Sha512> {
+    /// Returns an instance of PrimeOrderGroup that allows performing (V)OPRF
+    /// operations using the ristretto255 group.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use voprf_rs::oprf::groups::PrimeOrderGroup;
+    /// let pog = PrimeOrderGroup::ristretto_255();
+    /// ```
     pub fn ristretto_255() -> PrimeOrderGroup<RistrettoPoint,Sha512> {
         PrimeOrderGroup{
             generator: RISTRETTO_BASEPOINT_POINT,

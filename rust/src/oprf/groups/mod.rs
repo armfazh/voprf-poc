@@ -1,3 +1,13 @@
+/// The `ristretto` module allows creating a `PrimeOrederGroup` object for
+/// performing (V)OPRF operations in the group associated with
+/// [ristretto255](https://tools.ietf.org/html/draft-hdevalence-cfrg-ristretto-01).
+///
+/// # Example
+///
+/// ```
+/// use voprf_rs::oprf::groups::PrimeOrderGroup;
+/// let pog = PrimeOrderGroup::ristretto_255();
+/// ```
 pub mod ristretto;
 
 use std::io::Error;
