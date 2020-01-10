@@ -1,5 +1,5 @@
 [package]
-name = "voprf-poc-rs"
+name = "voprf-rs"
 version = "0.0.1"
 authors = ["Alex Davidson <coela@alxdavids.xyz>"]
 edition = "2018"

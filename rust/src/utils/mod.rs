@@ -15,7 +15,7 @@ use rand_core::{RngCore, OsRng};
 /// # Examples
 ///
 /// ```
-/// use voprf_poc_rs::utils::rand_bytes;
+/// use voprf_rs::utils::rand_bytes;
 /// let mut out: Vec<u8> = Vec::new();
 /// let byte_length: usize = 32;
 /// rand_bytes(byte_length, &mut out);

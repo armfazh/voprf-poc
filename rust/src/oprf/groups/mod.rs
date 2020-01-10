@@ -10,7 +10,7 @@ use std::io::Error;
 ///
 /// # Example functionality (using ristretto_255):
 /// ```
-/// use voprf_poc_rs::oprf::groups::PrimeOrderGroup;
+/// use voprf_rs::oprf::groups::PrimeOrderGroup;
 /// // create group instantiation
 /// let pog = PrimeOrderGroup::ristretto_255();
 ///
@@ -60,7 +60,7 @@ use std::io::Error;
 ///
 /// ```
 /// use digest::Digest;
-/// use voprf_poc_rs::oprf::groups::PrimeOrderGroup;
+/// use voprf_rs::oprf::groups::PrimeOrderGroup;
 /// let pog = PrimeOrderGroup::ristretto_255();
 /// let mut h = (pog.hash)();
 /// h.input(b"some_data");
@@ -77,7 +77,7 @@ use std::io::Error;
 /// revealing `k`). DLEQ proof generation and verification is as follows:
 ///
 /// ```
-/// use voprf_poc_rs::oprf::groups::PrimeOrderGroup;
+/// use voprf_rs::oprf::groups::PrimeOrderGroup;
 /// let pog = PrimeOrderGroup::ristretto_255();
 /// let m = (pog.random_element)();
 ///
@@ -97,7 +97,7 @@ use std::io::Error;
 /// k*m_i` for each `i`:
 ///
 /// ```
-/// use voprf_poc_rs::oprf::groups::PrimeOrderGroup;
+/// use voprf_rs::oprf::groups::PrimeOrderGroup;
 /// let pog = PrimeOrderGroup::ristretto_255();
 /// let mut k: Vec<u8> = Vec::new();
 /// (pog.uniform_bytes)(&mut k);

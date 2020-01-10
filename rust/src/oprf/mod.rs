@@ -11,10 +11,13 @@ use super::errors::{err_internal,err_public_key_not_found,err_proof_not_found,er
 
 /// # Example
 ///
+/// Provides a local end-to-end example of the (V)OPRF protocol interaction
+/// between server and client.
+///
 /// ```
-/// use voprf_poc_rs::oprf::groups::PrimeOrderGroup;
-/// use voprf_poc_rs::oprf::{Server,Client};
-/// use voprf_poc_rs::oprf::ciphersuite::Ciphersuite;
+/// use voprf_rs::oprf::groups::PrimeOrderGroup;
+/// use voprf_rs::oprf::{Server,Client};
+/// use voprf_rs::oprf::ciphersuite::Ciphersuite;
 /// use curve25519_dalek::ristretto::RistrettoPoint;
 /// use sha2::Sha512;
 ///
@@ -93,14 +96,20 @@ pub struct PublicKey<T>(T);
 ///
 /// # Fields
 ///
-/// `data`: The underlying buffer used for generating the client input
-/// `elem`: A group element equal to `h1(data)*r` where `r` is the scalar
+/// * `data`: The underlying buffer used for generating the client input
+/// * `elem`: A group element equal to `h1(data)*r` where `r` is the scalar
 /// respresentation of the blinding factor used
-/// `blind`: The bytes corresponding to the blinding factor that is used
+/// * `blind`: The bytes corresponding to the blinding factor that is used
 #[derive(Clone)]
 pub struct Input<T> {
+    /// The initial bytes that characterise the client input
     pub data: Vec<u8>,
+    /// The curve point that results from computing ciph.h1(x)*blind, where
+    /// ciph.h1 encodes bytes as elements in the prime-order group used by the
+    /// (V)OPRF
     pub elem: T,
+    // The value that is used to blind the input by the client, to ensure that
+    // the server does not learn their input
     pub blind: Vec<u8>
 }
 
@@ -117,7 +126,11 @@ pub struct Input<T> {
 ///   ciphersuite is verifiable.
 #[derive(Clone)]
 pub struct Evaluation<T>{
+    /// The group elements that result from evaluating the PRF on the
+    /// server-side
     pub elems: Vec<T>,
+    /// Optional proof (for verifiability in VOPRF) for ensuring that the server
+    /// evaluates the PRF with a committed key
     pub proof: Option<[Vec<u8>; 2]>
 }
 
@@ -126,7 +139,10 @@ pub struct Evaluation<T>{
 #[derive(Clone)]
 pub struct Participant<T,H,K>
         where T: Clone, H: Clone {
+    /// The ciphersuite used by the participant
     pub ciph: Ciphersuite<T,H>,
+    /// The tye of key associated with the `Participant`, either `SecretKey` or
+    /// `PublicKey`.
     pub key: K
 }
 
@@ -137,9 +153,9 @@ pub struct Participant<T,H,K>
 /// # Example
 ///
 /// ```
-/// use voprf_poc_rs::oprf::groups::PrimeOrderGroup;
-/// use voprf_poc_rs::oprf::Server;
-/// use voprf_poc_rs::oprf::ciphersuite::Ciphersuite;
+/// use voprf_rs::oprf::groups::PrimeOrderGroup;
+/// use voprf_rs::oprf::Server;
+/// use voprf_rs::oprf::ciphersuite::Ciphersuite;
 /// use curve25519_dalek::ristretto::RistrettoPoint;
 /// use sha2::Sha512;
 ///
@@ -156,6 +172,12 @@ pub type Server<T,H> = Participant<T,H,SecretKey>;
 
 impl<T,H> Server<T,H>
         where T: Clone, H: Clone {
+    /// Creates an instance of the `Server` type from an initial choice of
+    /// ciphersuite.
+    ///
+    /// # Inputs
+    ///
+    /// * `ciph`: A valid `Ciphersuite<T,H>` object
     pub fn setup(ciph: Ciphersuite<T,H>) -> Self {
         let pog = &ciph.pog.clone();
         Server{
@@ -164,6 +186,12 @@ impl<T,H> Server<T,H>
         }
     }
 
+    /// Corresponds to the (V)OPRF_Eval algorithm in draft-irtf-cfrg-voprf.
+    /// Evaluates the server-side PRF portion of the (V)OPRF of the protocol
+    ///
+    /// # Inputs
+    ///
+    /// `input_elems`: A slice of group elements (type `T`)
     pub fn eval(&self, input_elems: &[T]) -> Evaluation<T> {
         let mut eval_elems = Vec::new();
         let ciph = &self.ciph;
@@ -206,6 +234,14 @@ impl<T,H> Client<T,H>
         where T: Clone, H: Clone + digest::BlockInput + digest::FixedOutput
         + digest::Input + digest::Reset + std::default::Default,
         PrimeOrderGroup<T, H>: ciphersuite::Supported {
+    /// Creates an instance of the `Client` type from an initial choice of
+    /// ciphersuite.
+    ///
+    /// # Inputs
+    ///
+    /// * `ciph`: A valid `Ciphersuite<T,H>` object
+    /// * `pub_key`: An optional `PublicKey<T,H>` object in the case where the
+    ///   ciphersuite is verifiable
     pub fn setup(ciph: Ciphersuite<T,H>, pub_key: Option<PublicKey<T>>) -> Result<Self, Error> {
         let pk_obj = None;
         // verifiable ciphersuites must have a public key set
@@ -220,8 +256,14 @@ impl<T,H> Client<T,H>
         })
     }
 
-    // blind, TODO: update draft to allow blinding/unblinding multiple inputs at
-    // once (maybe created batched alternatives?)
+    /// Corresponds to the (V)OPRF_Blind algorithm in draft-irtf-cfrg-voprf.
+    /// Computes a set of Input objects corresponding to blinded group elements
+    /// derived from the input bytes
+    ///
+    /// # Inputs
+    ///
+    /// * `inputs`: A slice of byte vectors which the blinded group elements are
+    ///   computed from
     pub fn blind(&self, inputs: &[Vec<u8>]) -> Vec<Input<T>> {
         let mut blinded_inputs: Vec<Input<T>> = Vec::new();
         for x in inputs {
@@ -240,7 +282,15 @@ impl<T,H> Client<T,H>
         blinded_inputs
     }
 
-    // unblind, TODO: see above
+    /// Corresponds to the (V)OPRF_Unblind algorithm in draft-irtf-cfrg-voprf.
+    /// Unblinds the output of the server evaluation algorithm, in accordance
+    /// with the client-specified inputs. If the client ciphersuite is for a
+    /// VOPRF< then it will also verify the server-generated DLEQ proof object.
+    ///
+    /// # Inputs
+    ///
+    /// * `inputs`: client-generated (V)OPRF inputs
+    /// * `eval`: corresponding server evaluation over client inputs
     pub fn unblind(&self, inputs: &[Input<T>], eval: &Evaluation<T>) -> Result<Vec<T>, Error> {
         let ciph = &self.ciph;
         let pog = &ciph.pog;
@@ -292,7 +342,17 @@ impl<T,H> Client<T,H>
         Ok(outs)
     }
 
-    // finalize
+    /// Corresponds to the (V)OPRF_Finalize algorithm in draft-irtf-cfrg-voprf.
+    /// Completes the (V)OPRF protocol by computing an HMAC tag (over arbitrary
+    /// data `aux`) from each (V)OPRF evaluation.
+    ///
+    /// # Inputs
+    ///
+    /// * `input_data`: slice corresponding to the initial bytes of each client
+    ///   input (i.e. `Input.data`).
+    /// * `elem`: unblinded group element recovered from (V)OPRF_Unblind
+    ///   algorithm.
+    /// * `aux`: arbitrary bytes used to evaluate finalization HMAC.
     pub fn finalize(&self, input_data: &[u8], elem: &T, aux: &[u8]) -> Result<Vec<u8>, Error> {
         let ciph = &self.ciph;
         let pog = &ciph.pog;

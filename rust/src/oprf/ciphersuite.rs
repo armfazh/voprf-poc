@@ -42,8 +42,8 @@ fn get_name<S: Supported>(x: &S) -> String {
 /// # Example
 ///
 /// ```
-/// use voprf_poc_rs::oprf::groups::PrimeOrderGroup;
-/// use voprf_poc_rs::oprf::ciphersuite::Ciphersuite;
+/// use voprf_rs::oprf::groups::PrimeOrderGroup;
+/// use voprf_rs::oprf::ciphersuite::Ciphersuite;
 ///
 /// // create instance of Ciphersuite
 /// let pog  = PrimeOrderGroup::ristretto_255();
@@ -87,7 +87,7 @@ impl<T,H> Ciphersuite<T,H>
     /// # Arguments
     ///
     /// * `pog`: An instance of a PrimeOrderGroup object, such as
-    ///   `voprf_poc_rs::oprf::groups::PrimeOrderGroup::ristretto255`.
+    ///   `voprf_rs::oprf::groups::PrimeOrderGroup::ristretto255`.
     /// * `verifiable`: A bool parameter indicating whether the ciphersuite
     ///   corresponds to a VOPRF instantiation, or not.
     pub fn new(pog: PrimeOrderGroup<T,H>, verifiable: bool) -> Ciphersuite<T,H> {
