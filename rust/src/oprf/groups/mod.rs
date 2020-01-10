@@ -124,25 +124,52 @@ use std::io::Error;
 ///     required for VOPRF functionality
 #[derive(Clone)]
 pub struct PrimeOrderGroup<T,H> {
+    /// A fixed generator for the group instantiation
     pub generator: T,
+    /// The byte length of group elements
     pub byte_length: usize,
+    /// An associated hash function for the group instantiation. Used by
+    /// algorithms that operate over group-related data.
     pub hash: fn() -> H,
+    /// A function for deterministically mapping arbitrary bytes to uniformly
+    /// distributed elements of the group.
     pub encode_to_group: fn(&[u8]) -> T,
+    /// A function indicating whether the input is a valid group element
     pub is_valid: fn(&T) -> bool,
+    /// A function for checking whether two points are equal, or not
     pub is_equal: fn(&T, &T) -> bool,
+    /// A function for adding two group elements together
     pub add: fn(&T, &T) -> T,
+    /// A function that performs scalar multiplication of a group element with a
+    /// provided scalar value
     pub scalar_mult: fn(&T, &[u8]) -> T,
+    /// A function that computes (1/r) * P, where P is a group element and r is
+    /// a scalar input
     pub inverse_mult: fn(&T, &[u8]) -> T,
+    /// A function for returning a random element from the group
     pub random_element: fn() -> T,
+    /// A function that returns fills a sequence of bytes that map to all values
+    /// less than the order of the group
     pub uniform_bytes: fn(&mut Vec<u8>),
+    /// A function that serializes the provided group element into the provided
+    /// output buffer.
     pub serialize: fn(&T, &mut Vec<u8>),
+    /// A function that deserializes the provided bytes into a valid group
+    /// element.
     pub deserialize: fn(&[u8]) -> Result<T, Error>,
 
     // DLEQ operations have to be defined with respect to the prime-order group
     // to allow for different scalar implementations
+
+    /// A function that generates a DLEQ proof for the provided key and group
+    /// elements.
     pub dleq_generate: fn(&[u8], &T, &T, &T) -> [Vec<u8>; 2],
+    /// A function for verifying a DLEQ proof based on the provided input
+    /// elements and the committed public key (as a byte slice).
     pub dleq_verify: fn(&T, &T, &T, &[Vec<u8>; 2]) -> bool,
+    /// A function for computing batched DLEQ proofs.
     pub batch_dleq_generate: fn(&[u8], &T, &[T], &[T]) -> [Vec<u8>; 2],
+    /// A function for verifying batched DLEQ proofs.
     pub batch_dleq_verify: fn(&T, &[T], &[T], &[Vec<u8>; 2]) -> bool,
 }
 
