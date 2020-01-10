@@ -108,8 +108,8 @@ pub struct Input<T> {
     /// ciph.h1 encodes bytes as elements in the prime-order group used by the
     /// (V)OPRF
     pub elem: T,
-    // The value that is used to blind the input by the client, to ensure that
-    // the server does not learn their input
+    /// The value that is used to blind the input by the client, to ensure that
+    /// the server does not learn their input
     pub blind: Vec<u8>
 }
 
