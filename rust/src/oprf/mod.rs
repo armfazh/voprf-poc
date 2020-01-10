@@ -175,7 +175,7 @@ impl<T,H> Server<T,H>
     /// Creates an instance of the `Server` type from an initial choice of
     /// ciphersuite.
     ///
-    /// # Inputs
+    /// # Arguments
     ///
     /// * `ciph`: A valid `Ciphersuite<T,H>` object
     pub fn setup(ciph: Ciphersuite<T,H>) -> Self {
@@ -189,7 +189,7 @@ impl<T,H> Server<T,H>
     /// Corresponds to the (V)OPRF_Eval algorithm in draft-irtf-cfrg-voprf.
     /// Evaluates the server-side PRF portion of the (V)OPRF of the protocol
     ///
-    /// # Inputs
+    /// # Arguments
     ///
     /// `input_elems`: A slice of group elements (type `T`)
     pub fn eval(&self, input_elems: &[T]) -> Evaluation<T> {
@@ -237,7 +237,7 @@ impl<T,H> Client<T,H>
     /// Creates an instance of the `Client` type from an initial choice of
     /// ciphersuite.
     ///
-    /// # Inputs
+    /// # Arguments
     ///
     /// * `ciph`: A valid `Ciphersuite<T,H>` object
     /// * `pub_key`: An optional `PublicKey<T,H>` object in the case where the
@@ -260,7 +260,7 @@ impl<T,H> Client<T,H>
     /// Computes a set of Input objects corresponding to blinded group elements
     /// derived from the input bytes
     ///
-    /// # Inputs
+    /// # Arguments
     ///
     /// * `inputs`: A slice of byte vectors which the blinded group elements are
     ///   computed from
@@ -287,7 +287,7 @@ impl<T,H> Client<T,H>
     /// with the client-specified inputs. If the client ciphersuite is for a
     /// VOPRF< then it will also verify the server-generated DLEQ proof object.
     ///
-    /// # Inputs
+    /// # Arguments
     ///
     /// * `inputs`: client-generated (V)OPRF inputs
     /// * `eval`: corresponding server evaluation over client inputs
@@ -346,7 +346,7 @@ impl<T,H> Client<T,H>
     /// Completes the (V)OPRF protocol by computing an HMAC tag (over arbitrary
     /// data `aux`) from each (V)OPRF evaluation.
     ///
-    /// # Inputs
+    /// # Arguments
     ///
     /// * `input_data`: slice corresponding to the initial bytes of each client
     ///   input (i.e. `Input.data`).
