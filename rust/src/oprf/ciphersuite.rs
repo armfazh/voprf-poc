@@ -6,20 +6,21 @@
 //! https://tools.ietf.org/html/draft-irtf-cfrg-voprf-02#section-6 for a full
 //! list of supported ciphersuites in the spec.
 
-use hmac::{Hmac,Mac};
 use digest::Digest;
+use hmac::{Hmac, Mac};
 
 // supported primitives
-use sha2::Sha512;
-use super::groups::{PrimeOrderGroup,GroupID};
-use curve25519_dalek::ristretto::RistrettoPoint;
-use super::groups::p384::NistPoint;
-use super::groups::redox_ecc::{WPoint,MPoint};
-use hkdf_sha512::Hkdf;
 use super::super::utils::copy_into;
+use super::groups::p384::NistPoint;
+use super::groups::redox_ecc::{MPoint, WPoint};
+use super::groups::{GroupID, PrimeOrderGroup};
+use curve25519_dalek::ristretto::RistrettoPoint;
+use hkdf_sha512::Hkdf;
+use sha2::Sha256;
+use sha2::Sha512;
 
-use std::io::Error;
 use super::super::errors::err_finalization;
+use std::io::Error;
 
 /// The Supported trait defines the `PrimeOrderGroup<T,H>` instantiations that
 /// are currently supported by the VOPRF implementation. Currently, only
@@ -29,21 +30,53 @@ use super::super::errors::err_finalization;
 pub trait Supported {
     /// Returns the string identifier for the supported group
     fn name(&self) -> String;
+    /// Returns the integer identifier for the supported group
+    fn id(&self) -> u16;
 }
 
-impl Supported for PrimeOrderGroup<RistrettoPoint,Sha512> {
+impl Supported for PrimeOrderGroup<RistrettoPoint, Sha512> {
     fn name(&self) -> String {
         String::from("ristretto255-HKDF-SHA512-ELL2-RO")
     }
-}
-
-impl Supported for PrimeOrderGroup<NistPoint,Sha512> {
-    fn name(&self) -> String {
-        String::from("P384-HKDF-SHA512-SSWU-RO")
+    fn id(&self) -> u16 {
+        1
     }
 }
 
-impl Supported for PrimeOrderGroup<WPoint,Sha512> {
+impl Supported for PrimeOrderGroup<NistPoint, Sha256> {
+    fn name(&self) -> String {
+        String::from("P256-HKDF-SHA256-SSWU-RO")
+    }
+    fn id(&self) -> u16 {
+        3
+    }
+}
+
+impl Supported for PrimeOrderGroup<NistPoint, Sha512> {
+    fn name(&self) -> String {
+        String::from("P384-HKDF-SHA512-SSWU-RO")
+    }
+    fn id(&self) -> u16 {
+        4
+    }
+}
+
+impl Supported for PrimeOrderGroup<WPoint, Sha256> {
+    fn name(&self) -> String {
+        match &self.group_id {
+            GroupID::P256 => String::from("P256-HKDF-SHA256-SSWU-RO"),
+            _ => panic!("Unsupported group"),
+        }
+    }
+    fn id(&self) -> u16 {
+        match &self.group_id {
+            GroupID::P256 => 3,
+            _ => panic!("Unsupported group"),
+        }
+    }
+}
+
+impl Supported for PrimeOrderGroup<WPoint, Sha512> {
     fn name(&self) -> String {
         match &self.group_id {
             GroupID::P384 => String::from("P384-HKDF-SHA512-SSWU-RO"),
@@ -51,12 +84,25 @@ impl Supported for PrimeOrderGroup<WPoint,Sha512> {
             _ => panic!("Unsupported group"),
         }
     }
+    fn id(&self) -> u16 {
+        match &self.group_id {
+            GroupID::P384 => 4,
+            GroupID::P521 => 5,
+            _ => panic!("Unsupported group"),
+        }
+    }
 }
 
-impl Supported for PrimeOrderGroup<MPoint,Sha512> {
+impl Supported for PrimeOrderGroup<MPoint, Sha512> {
     fn name(&self) -> String {
         match &self.group_id {
             GroupID::Curve448 => String::from("curve448-HKDF-SHA512-ELL2-RO"),
+            _ => panic!("Unsupported group"),
+        }
+    }
+    fn id(&self) -> u16 {
+        match &self.group_id {
+            GroupID::Curve448 => 2,
             _ => panic!("Unsupported group"),
         }
     }
@@ -65,6 +111,11 @@ impl Supported for PrimeOrderGroup<MPoint,Sha512> {
 // Returns the name of the primitive set if it is supported
 fn get_name<S: Supported>(x: &S) -> String {
     x.name()
+}
+
+// Returns the id of the primitive set if it is supported
+fn get_id<S: Supported>(x: &S) -> u16 {
+    x.id()
 }
 
 /// The Ciphersuite struct gives access to the core functionality provided by a
@@ -106,22 +157,27 @@ fn get_name<S: Supported>(x: &S) -> String {
 /// let hkdf = ciph.h5();
 /// ```
 #[derive(Clone)]
-pub struct Ciphersuite<T,H>
-        where PrimeOrderGroup<T,H>: Clone {
+pub struct Ciphersuite<T, H>
+where
+    PrimeOrderGroup<T, H>: Clone,
+{
+    /// id of the ciphersuite
+    pub id: u16,
     /// name of the ciphersuite
     pub name: String,
     /// A boolean indiciating whether the ciphersuite corresponds to a VOPRF or
     /// not (OPRF only).
     pub verifiable: bool,
     /// The PrimeOrderGroup instantiation that the ciphersuite corresponds to
-    pub pog: PrimeOrderGroup<T,H>
+    pub pog: PrimeOrderGroup<T, H>,
 }
 
-impl<T,H> Ciphersuite<T,H>
-        where PrimeOrderGroup<T,H>: Supported, T: Clone, H: Default
-        + digest::Input + digest::BlockInput + digest::FixedOutput
-        + digest::Reset + Clone {
-
+impl<T, H> Ciphersuite<T, H>
+where
+    PrimeOrderGroup<T, H>: Supported,
+    T: Clone,
+    H: Default + digest::Input + digest::BlockInput + digest::FixedOutput + digest::Reset + Clone,
+{
     /// Constructor for the Ciphersuite object
     ///
     /// # Arguments
@@ -130,7 +186,7 @@ impl<T,H> Ciphersuite<T,H>
     ///   `voprf_rs::oprf::groups::PrimeOrderGroup::ristretto255`.
     /// * `verifiable`: A bool parameter indicating whether the ciphersuite
     ///   corresponds to a VOPRF instantiation, or not.
-    pub fn new(pog: PrimeOrderGroup<T,H>, verifiable: bool) -> Ciphersuite<T,H> {
+    pub fn new(pog: PrimeOrderGroup<T, H>, verifiable: bool) -> Ciphersuite<T, H> {
         let mut name = String::from("");
         match verifiable {
             true => name.push_str("VOPRF-"),
@@ -138,9 +194,10 @@ impl<T,H> Ciphersuite<T,H>
         }
         name.push_str(&get_name(&pog));
         Ciphersuite {
+            id: get_id(&pog),
             name: name,
             verifiable: verifiable,
-            pog: pog
+            pog: pog,
         }
     }
 
@@ -152,8 +209,8 @@ impl<T,H> Ciphersuite<T,H>
     /// # Arguments
     ///
     /// * `buf`: the sequence of bytes to encode as a curve point
-    pub fn h1(&self, buf: &[u8]) -> T {
-        (self.pog.encode_to_group)(buf)
+    pub fn h1(&self, buf: &[u8], dst: &[u8]) -> T {
+        (self.pog.encode_to_group)(buf, dst)
     }
 
     /// Provides access to the HMAC algorithm that is used in running
@@ -169,8 +226,8 @@ impl<T,H> Ciphersuite<T,H>
         match Hmac::<H>::new_varkey(key) {
             Ok(mac) => {
                 return Ok(mac);
-            },
-            Err(_) => return Err(err_finalization())
+            }
+            Err(_) => return Err(err_finalization()),
         }
     }
 
@@ -203,25 +260,31 @@ impl<T,H> Ciphersuite<T,H>
     /// Returns an instance of the HKDF primitive specified in
     /// https://tools.ietf.org/html/draft-irtf-cfrg-voprf-02#section-6.
     pub fn h5(&self) -> Hkdf {
-        Hkdf{}
+        Hkdf {}
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{PrimeOrderGroup,Ciphersuite};
+    use super::{Ciphersuite, PrimeOrderGroup};
 
     #[test]
     fn ristretto_oprf_ciphersuite() {
         let ciph = Ciphersuite::new(PrimeOrderGroup::ristretto_255(), false);
-        assert_eq!(ciph.name, String::from("OPRF-ristretto255-HKDF-SHA512-ELL2-RO"));
+        assert_eq!(
+            ciph.name,
+            String::from("OPRF-ristretto255-HKDF-SHA512-ELL2-RO")
+        );
         assert_eq!(ciph.verifiable, false);
     }
 
     #[test]
     fn ristretto_voprf_ciphersuite() {
         let ciph = Ciphersuite::new(PrimeOrderGroup::ristretto_255(), true);
-        assert_eq!(ciph.name, String::from("VOPRF-ristretto255-HKDF-SHA512-ELL2-RO"));
+        assert_eq!(
+            ciph.name,
+            String::from("VOPRF-ristretto255-HKDF-SHA512-ELL2-RO")
+        );
         assert_eq!(ciph.verifiable, true);
     }
 
@@ -229,7 +292,7 @@ mod tests {
     fn ristretto_h1() {
         let pog = PrimeOrderGroup::ristretto_255();
         let ciph = Ciphersuite::new(pog.clone(), true);
-        let ge = ciph.h1(&[0; 32]);
+        let ge = ciph.h1(&[0; 32], b"");
         assert_eq!((pog.is_valid)(&ge), true);
     }
 
@@ -262,7 +325,7 @@ mod tests {
     fn p384_old_h1() {
         let pog = PrimeOrderGroup::p384_old();
         let ciph = Ciphersuite::new(pog.clone(), true);
-        let ge = ciph.h1(&[0; 32]);
+        let ge = ciph.h1(&[0; 32], b"");
         assert_eq!((pog.is_valid)(&ge), true);
     }
 
@@ -295,7 +358,7 @@ mod tests {
     fn p384_h1() {
         let pog = PrimeOrderGroup::p384();
         let ciph = Ciphersuite::new(pog.clone(), true);
-        let ge = ciph.h1(&[0; 32]);
+        let ge = ciph.h1(&[0; 32], b"");
         assert_eq!((pog.is_valid)(&ge), true);
     }
 
@@ -328,7 +391,7 @@ mod tests {
     fn p521_h1() {
         let pog = PrimeOrderGroup::p521();
         let ciph = Ciphersuite::new(pog.clone(), true);
-        let ge = ciph.h1(&[0; 32]);
+        let ge = ciph.h1(&[0; 32], b"");
         assert_eq!((pog.is_valid)(&ge), true);
     }
 
@@ -353,7 +416,10 @@ mod tests {
     #[test]
     fn c448_voprf_ciphersuite() {
         let ciph = Ciphersuite::new(PrimeOrderGroup::c448(), true);
-        assert_eq!(ciph.name, String::from("VOPRF-curve448-HKDF-SHA512-ELL2-RO"));
+        assert_eq!(
+            ciph.name,
+            String::from("VOPRF-curve448-HKDF-SHA512-ELL2-RO")
+        );
         assert_eq!(ciph.verifiable, true);
     }
 
@@ -361,7 +427,7 @@ mod tests {
     fn c448_h1() {
         let pog = PrimeOrderGroup::c448();
         let ciph = Ciphersuite::new(pog.clone(), true);
-        let ge = ciph.h1(&[0; 32]);
+        let ge = ciph.h1(&[0; 32], b"");
         assert_eq!((pog.is_valid)(&ge), true);
     }
 

@@ -3,9 +3,9 @@
 //! insatntiations of the group settings. Currently supported groups:
 //!
 //! - ristretto255 (experimental, not specified in draft)
-pub mod ristretto;
 pub mod p384;
 pub mod redox_ecc;
+pub mod ristretto;
 
 use std::io::Error;
 
@@ -17,6 +17,8 @@ pub enum GroupID {
     P384Old,
     /// ristretto255 group
     Ristretto255,
+    /// P256 group instantiation implemented using redox-ecc crate
+    P256,
     /// P384 group instantiation implemented using redox-ecc crate
     P384,
     /// P521 group instantiation implemented using redox-ecc crate
@@ -153,7 +155,7 @@ pub enum GroupID {
 /// -   inversion of group elements is not implemented explicitly as it not
 ///     required for VOPRF functionality
 #[derive(Clone)]
-pub struct PrimeOrderGroup<T,H> {
+pub struct PrimeOrderGroup<T, H> {
     /// Individual group instantiation identifier
     pub group_id: GroupID,
     /// A fixed generator for the group instantiation
@@ -165,7 +167,7 @@ pub struct PrimeOrderGroup<T,H> {
     pub hash: fn() -> H,
     /// A function for deterministically mapping arbitrary bytes to uniformly
     /// distributed elements of the group.
-    pub encode_to_group: fn(&[u8]) -> T,
+    pub encode_to_group: fn(&[u8], &[u8]) -> T,
     /// A function indicating whether the input is a valid group element
     pub is_valid: fn(&T) -> bool,
     /// A function for checking whether two points are equal, or not
@@ -194,7 +196,6 @@ pub struct PrimeOrderGroup<T,H> {
 
     // DLEQ operations have to be defined with respect to the prime-order group
     // to allow for different scalar implementations
-
     /// A function that generates a DLEQ proof for the provided key and group
     /// elements.
     pub dleq_generate: fn(&[u8], &T, &T, &T) -> [Vec<u8>; 2],
@@ -207,7 +208,6 @@ pub struct PrimeOrderGroup<T,H> {
     pub batch_dleq_verify: fn(&T, &[T], &[T], &[Vec<u8>; 2]) -> bool,
 
     // DLEQ functions used in testing only
-
     /// generates DLEQ proof object with fixed values for testing
     pub fixed_dleq_generate: fn(&[u8], &T, &T, &T, &[u8]) -> [Vec<u8>; 2],
     /// batched DLEQ generation with fixed inputs for testing

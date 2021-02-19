@@ -51,17 +51,18 @@
 //! }
 //! ```
 
-
 pub mod ciphersuite;
 pub mod groups;
 
-use groups::PrimeOrderGroup;
 use ciphersuite::Ciphersuite;
+use groups::PrimeOrderGroup;
 
 use hmac::Mac;
 
+use super::errors::{
+    err_internal, err_proof_not_found, err_proof_verification, err_public_key_not_found,
+};
 use std::io::Error;
-use super::errors::{err_internal,err_public_key_not_found,err_proof_not_found,err_proof_verification};
 
 const OPRF_DST: &'static str = "oprf_derive_output";
 
@@ -73,7 +74,7 @@ pub struct SecretKey(Vec<u8>);
 impl SecretKey {
     /// Constructor for `SecretKey<T,H>` for an underlying group instance of the
     /// form `PrimeOrderGroup<T,H>`.
-    pub fn new<T,H>(pog: &PrimeOrderGroup<T,H>) -> Self {
+    pub fn new<T, H>(pog: &PrimeOrderGroup<T, H>) -> Self {
         let mut buf: Vec<u8> = Vec::new();
         (pog.uniform_bytes)(&mut buf);
         SecretKey(buf)
@@ -88,8 +89,10 @@ impl SecretKey {
     /// object associated with `PrimeOrderGroup<T,H>`. Essentially computes
     /// `g*k` where `g` is the fixed generator of the group, and where `k` is
     /// the scaalr value of the secret key.
-    pub fn pub_key<T,H>(&self, pog: &PrimeOrderGroup<T,H>) -> PublicKey<T>
-            where T: Clone {
+    pub fn pub_key<T, H>(&self, pog: &PrimeOrderGroup<T, H>) -> PublicKey<T>
+    where
+        T: Clone,
+    {
         PublicKey((pog.scalar_mult)(&pog.generator, &self.0))
     }
 }
@@ -101,14 +104,14 @@ impl SecretKey {
 pub struct PublicKey<T>(T);
 impl<T> PublicKey<T> {
     /// outputs the (compressed) public key as a hex string
-    pub fn as_hex<H>(&self, pog: &PrimeOrderGroup<T,H>) -> String {
+    pub fn as_hex<H>(&self, pog: &PrimeOrderGroup<T, H>) -> String {
         let mut out = Vec::new();
         (pog.serialize)(&self.0, true, &mut out);
         hex::encode(out)
     }
 
     /// constructs an instance of `PublicKey` from hex input
-    pub fn from_hex<H>(hex_str: String, pog: &PrimeOrderGroup<T,H>) -> Self {
+    pub fn from_hex<H>(hex_str: String, pog: &PrimeOrderGroup<T, H>) -> Self {
         let buf = hex::decode(hex_str).unwrap();
         PublicKey((pog.deserialize)(&buf).unwrap())
     }
@@ -134,7 +137,7 @@ pub struct Input<T> {
     pub elem: T,
     /// The value that is used to blind the input by the client, to ensure that
     /// the server does not learn their input
-    pub blind: Vec<u8>
+    pub blind: Vec<u8>,
 }
 
 /// The struct used for wrapping the data generated in the server response.
@@ -149,22 +152,25 @@ pub struct Input<T> {
 /// * `proof`: An optional DLEQ proof object that is mandatory if the associated
 ///   ciphersuite is verifiable.
 #[derive(Clone)]
-pub struct Evaluation<T>{
+pub struct Evaluation<T> {
     /// The group elements that result from evaluating the PRF on the
     /// server-side
     pub elems: Vec<T>,
     /// Optional proof (for verifiability in VOPRF) for ensuring that the server
     /// evaluates the PRF with a committed key
-    pub proof: Option<[Vec<u8>; 2]>
+    pub proof: Option<[Vec<u8>; 2]>,
 }
 
 /// Defines a struct for (V)OPRF protocol participants. Corresponds to a
 /// specific choice of `Ciphersuite<T,H>`, along with a specific key type.
 #[derive(Clone)]
-pub struct Participant<T,H,K>
-        where T: Clone, H: Clone {
+pub struct Participant<T, H, K>
+where
+    T: Clone,
+    H: Clone,
+{
     /// The ciphersuite used by the participant
-    pub ciph: Ciphersuite<T,H>,
+    pub ciph: Ciphersuite<T, H>,
     /// The type of key associated with the `Participant`, either `SecretKey` or
     /// `PublicKey`.
     pub key: K,
@@ -192,19 +198,22 @@ pub struct Participant<T,H,K>
 /// let m = ciph.h1(b"some_input_data");
 /// let _ = srv.eval(&vec![m]);
 /// ```
-pub type Server<T,H> = Participant<T,H,SecretKey>;
+pub type Server<T, H> = Participant<T, H, SecretKey>;
 
-impl<T,H> Server<T,H>
-        where T: Clone, H: Clone {
+impl<T, H> Server<T, H>
+where
+    T: Clone,
+    H: Clone,
+{
     /// Creates an instance of the `Server` type from an initial choice of
     /// ciphersuite.
     ///
     /// # Arguments
     ///
     /// * `ciph`: A valid `Ciphersuite<T,H>` object
-    pub fn setup(ciph: Ciphersuite<T,H>) -> Self {
+    pub fn setup(ciph: Ciphersuite<T, H>) -> Self {
         let pog = &ciph.pog.clone();
-        Server{
+        Server {
             ciph: ciph,
             key: SecretKey::new(pog),
         }
@@ -235,7 +244,7 @@ impl<T,H> Server<T,H>
             proof = Some(self.proof_generation(&sk, &pk, input_elems, &eval_elems));
         }
 
-        return Evaluation{
+        return Evaluation {
             elems: eval_elems,
             proof: proof,
         };
@@ -263,10 +272,11 @@ impl<T,H> Server<T,H>
         let mut proof = None;
         if ciph.verifiable {
             let pk = key.pub_key(pog).0;
-            proof = Some(self.fixed_proof_generation(&sk, &pk, input_elems, &eval_elems, fixed_scalar));
+            proof =
+                Some(self.fixed_proof_generation(&sk, &pk, input_elems, &eval_elems, fixed_scalar));
         }
 
-        return Evaluation{
+        return Evaluation {
             elems: eval_elems,
             proof: proof,
         };
@@ -278,19 +288,44 @@ impl<T,H> Server<T,H>
     }
 
     /// generates the DLEQ proof object
-    fn proof_generation(&self, sk: &[u8], pk: &T, input_elems: &[T], eval_elems: &[T]) -> [Vec<u8>; 2] {
+    fn proof_generation(
+        &self,
+        sk: &[u8],
+        pk: &T,
+        input_elems: &[T],
+        eval_elems: &[T],
+    ) -> [Vec<u8>; 2] {
         match input_elems.len() > 1 {
             true => (self.ciph.pog.batch_dleq_generate)(&sk, &pk, &input_elems, &eval_elems),
-            false => (self.ciph.pog.dleq_generate)(&sk, &pk, &input_elems[0], &eval_elems[0])
+            false => (self.ciph.pog.dleq_generate)(&sk, &pk, &input_elems[0], &eval_elems[0]),
         }
     }
 
     /// same as `proof_generation` except that it runs the algorithms with a
     /// fixed scalar, used for testing purposes.
-    fn fixed_proof_generation(&self, sk: &[u8], pk: &T, input_elems: &[T], eval_elems: &[T], fixed_scalar: &[u8]) -> [Vec<u8>; 2] {
+    fn fixed_proof_generation(
+        &self,
+        sk: &[u8],
+        pk: &T,
+        input_elems: &[T],
+        eval_elems: &[T],
+        fixed_scalar: &[u8],
+    ) -> [Vec<u8>; 2] {
         match input_elems.len() > 1 {
-            true => (self.ciph.pog.fixed_batch_dleq_generate)(&sk, &pk, &input_elems, &eval_elems, fixed_scalar),
-            false => (self.ciph.pog.fixed_dleq_generate)(&sk, &pk, &input_elems[0], &eval_elems[0], fixed_scalar)
+            true => (self.ciph.pog.fixed_batch_dleq_generate)(
+                &sk,
+                &pk,
+                &input_elems,
+                &eval_elems,
+                fixed_scalar,
+            ),
+            false => (self.ciph.pog.fixed_dleq_generate)(
+                &sk,
+                &pk,
+                &input_elems[0],
+                &eval_elems[0],
+                fixed_scalar,
+            ),
         }
     }
 }
@@ -302,12 +337,19 @@ impl<T,H> Server<T,H>
 /// == false`.
 ///
 /// See the example at the top of this docs for more example usage
-pub type Client<T,H> = Participant<T,H,Option<PublicKey<T>>>;
+pub type Client<T, H> = Participant<T, H, Option<PublicKey<T>>>;
 
-impl<T,H> Client<T,H>
-        where T: Clone, H: Clone + digest::BlockInput + digest::FixedOutput
-        + digest::Input + digest::Reset + std::default::Default,
-        PrimeOrderGroup<T, H>: ciphersuite::Supported {
+impl<T, H> Client<T, H>
+where
+    T: Clone,
+    H: Clone
+        + digest::BlockInput
+        + digest::FixedOutput
+        + digest::Input
+        + digest::Reset
+        + std::default::Default,
+    PrimeOrderGroup<T, H>: ciphersuite::Supported,
+{
     /// Creates an instance of the `Client` type from an initial choice of
     /// ciphersuite.
     ///
@@ -316,14 +358,14 @@ impl<T,H> Client<T,H>
     /// * `ciph`: A valid `Ciphersuite<T,H>` object
     /// * `pub_key`: An optional `PublicKey<T,H>` object in the case where the
     ///   ciphersuite is verifiable
-    pub fn setup(ciph: Ciphersuite<T,H>, pub_key: Option<PublicKey<T>>) -> Result<Self, Error> {
+    pub fn setup(ciph: Ciphersuite<T, H>, pub_key: Option<PublicKey<T>>) -> Result<Self, Error> {
         // verifiable ciphersuites must have a public key set
         if ciph.verifiable {
             if let None = pub_key {
                 return Err(err_public_key_not_found());
             }
         }
-        Ok(Client{
+        Ok(Client {
             ciph: ciph,
             key: pub_key,
         })
@@ -345,10 +387,10 @@ impl<T,H> Client<T,H>
             let mut r: Vec<u8> = Vec::new();
             (pog.uniform_bytes)(&mut r);
             let p = self.blind_fixed(&x, &r);
-            blinded_inputs.push(Input{
+            blinded_inputs.push(Input {
                 data: x.to_vec(),
                 elem: p,
-                blind: r
+                blind: r,
             });
         }
         blinded_inputs
@@ -365,7 +407,7 @@ impl<T,H> Client<T,H>
     pub fn blind_fixed(&self, input: &[u8], blind: &[u8]) -> T {
         let ciph = &self.ciph;
         let pog = &ciph.pog;
-        let t = ciph.h1(&input);
+        let t = ciph.h1(&input, self.get_dst().as_bytes());
         (pog.scalar_mult)(&t, &blind)
     }
 
@@ -398,10 +440,20 @@ impl<T,H> Client<T,H>
                             for input in inputs {
                                 input_elems.push(input.elem.clone());
                             }
-                            proof_verification = Ok((pog.batch_dleq_verify)(&pk.0, &input_elems, &verify_evals, &d));
-                        },
+                            proof_verification = Ok((pog.batch_dleq_verify)(
+                                &pk.0,
+                                &input_elems,
+                                &verify_evals,
+                                &d,
+                            ));
+                        }
                         false => {
-                            proof_verification = Ok((pog.dleq_verify)(&pk.0, &inputs[0].elem, &verify_evals[0], &d));
+                            proof_verification = Ok((pog.dleq_verify)(
+                                &pk.0,
+                                &inputs[0].elem,
+                                &verify_evals[0],
+                                &d,
+                            ));
                         }
                     };
                 } else {
@@ -458,33 +510,42 @@ impl<T,H> Client<T,H>
                     Ok(mut inner_mac) => {
                         inner_mac.input(&aux);
                         Ok(inner_mac.result().code().to_vec())
-                    },
-                    Err(_) => Err(err_internal())
+                    }
+                    Err(_) => Err(err_internal()),
                 }
-            },
-            Err(_) => Err(err_internal())
+            }
+            Err(_) => Err(err_internal()),
         }
+    }
+
+    /// Returns the context string.
+    pub fn get_dst(&self) -> std::string::String {
+        let context_string = format!(
+            "VOPRF06-HashToGroup-{:02}{:04}",
+            self.ciph.verifiable as u8, self.ciph.id
+        );
+        context_string
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::groups::PrimeOrderGroup;
-    use super::{Client,Server,Ciphersuite,Input,Evaluation};
     use super::ciphersuite::Supported;
-    use curve25519_dalek::ristretto::RistrettoPoint;
     use super::groups::p384::NistPoint;
+    use super::groups::redox_ecc::{MPoint, WPoint};
+    use super::groups::PrimeOrderGroup;
+    use super::{Ciphersuite, Client, Evaluation, Input, Server};
+    use curve25519_dalek::ristretto::RistrettoPoint;
+    use serde::Deserialize;
     use sha2::Sha512;
     use std::fs;
-    use serde::Deserialize;
-    use super::groups::redox_ecc::{WPoint,MPoint};
 
     #[test]
     fn end_to_end_oprf_ristretto() {
-        let pog = PrimeOrderGroup::<RistrettoPoint,Sha512>::ristretto_255();
-        let ciph = Ciphersuite::<RistrettoPoint,Sha512>::new(pog.clone(), false);
-        let srv = Server::<RistrettoPoint,Sha512>::setup(ciph.clone());
-        let cli = match Client::<RistrettoPoint,Sha512>::setup(ciph.clone(), None) {
+        let pog = PrimeOrderGroup::<RistrettoPoint, Sha512>::ristretto_255();
+        let ciph = Ciphersuite::<RistrettoPoint, Sha512>::new(pog.clone(), false);
+        let srv = Server::<RistrettoPoint, Sha512>::setup(ciph.clone());
+        let cli = match Client::<RistrettoPoint, Sha512>::setup(ciph.clone(), None) {
             Ok(c) => c,
             Err(e) => panic!(e),
         };
@@ -494,10 +555,13 @@ mod tests {
 
     #[test]
     fn end_to_end_voprf_ristretto() {
-        let pog = PrimeOrderGroup::<RistrettoPoint,Sha512>::ristretto_255();
-        let ciph = Ciphersuite::<RistrettoPoint,Sha512>::new(pog.clone(), true);
-        let srv = Server::<RistrettoPoint,Sha512>::setup(ciph.clone());
-        let cli = match Client::<RistrettoPoint,Sha512>::setup(ciph.clone(), Some(srv.key.pub_key(&pog))) {
+        let pog = PrimeOrderGroup::<RistrettoPoint, Sha512>::ristretto_255();
+        let ciph = Ciphersuite::<RistrettoPoint, Sha512>::new(pog.clone(), true);
+        let srv = Server::<RistrettoPoint, Sha512>::setup(ciph.clone());
+        let cli = match Client::<RistrettoPoint, Sha512>::setup(
+            ciph.clone(),
+            Some(srv.key.pub_key(&pog)),
+        ) {
             Ok(c) => c,
             Err(e) => panic!(e),
         };
@@ -507,10 +571,10 @@ mod tests {
 
     #[test]
     fn end_to_end_batch_oprf_ristretto() {
-        let pog = PrimeOrderGroup::<RistrettoPoint,Sha512>::ristretto_255();
-        let ciph = Ciphersuite::<RistrettoPoint,Sha512>::new(pog.clone(), false);
-        let srv = Server::<RistrettoPoint,Sha512>::setup(ciph.clone());
-        let cli = match Client::<RistrettoPoint,Sha512>::setup(ciph.clone(), None) {
+        let pog = PrimeOrderGroup::<RistrettoPoint, Sha512>::ristretto_255();
+        let ciph = Ciphersuite::<RistrettoPoint, Sha512>::new(pog.clone(), false);
+        let srv = Server::<RistrettoPoint, Sha512>::setup(ciph.clone());
+        let cli = match Client::<RistrettoPoint, Sha512>::setup(ciph.clone(), None) {
             Ok(c) => c,
             Err(e) => panic!(e),
         };
@@ -520,10 +584,13 @@ mod tests {
 
     #[test]
     fn end_to_end_batch_voprf_ristretto() {
-        let pog = PrimeOrderGroup::<RistrettoPoint,Sha512>::ristretto_255();
-        let ciph = Ciphersuite::<RistrettoPoint,Sha512>::new(pog.clone(), true);
-        let srv = Server::<RistrettoPoint,Sha512>::setup(ciph.clone());
-        let cli = match Client::<RistrettoPoint,Sha512>::setup(ciph.clone(), Some(srv.key.pub_key(&pog))) {
+        let pog = PrimeOrderGroup::<RistrettoPoint, Sha512>::ristretto_255();
+        let ciph = Ciphersuite::<RistrettoPoint, Sha512>::new(pog.clone(), true);
+        let srv = Server::<RistrettoPoint, Sha512>::setup(ciph.clone());
+        let cli = match Client::<RistrettoPoint, Sha512>::setup(
+            ciph.clone(),
+            Some(srv.key.pub_key(&pog)),
+        ) {
             Ok(c) => c,
             Err(e) => panic!(e),
         };
@@ -533,10 +600,10 @@ mod tests {
 
     #[test]
     fn end_to_end_oprf_p384_old() {
-        let pog = PrimeOrderGroup::<NistPoint,Sha512>::p384_old();
-        let ciph = Ciphersuite::<NistPoint,Sha512>::new(pog.clone(), false);
-        let srv = Server::<NistPoint,Sha512>::setup(ciph.clone());
-        let cli = match Client::<NistPoint,Sha512>::setup(ciph.clone(), None) {
+        let pog = PrimeOrderGroup::<NistPoint, Sha512>::p384_old();
+        let ciph = Ciphersuite::<NistPoint, Sha512>::new(pog.clone(), false);
+        let srv = Server::<NistPoint, Sha512>::setup(ciph.clone());
+        let cli = match Client::<NistPoint, Sha512>::setup(ciph.clone(), None) {
             Ok(c) => c,
             Err(e) => panic!(e),
         };
@@ -546,23 +613,24 @@ mod tests {
 
     #[test]
     fn end_to_end_voprf_p384_old() {
-        let pog = PrimeOrderGroup::<NistPoint,Sha512>::p384_old();
-        let ciph = Ciphersuite::<NistPoint,Sha512>::new(pog.clone(), true);
-        let srv = Server::<NistPoint,Sha512>::setup(ciph.clone());
-        let cli = match Client::<NistPoint,Sha512>::setup(ciph.clone(), Some(srv.key.pub_key(&pog))) {
-            Ok(c) => c,
-            Err(e) => panic!(e),
-        };
+        let pog = PrimeOrderGroup::<NistPoint, Sha512>::p384_old();
+        let ciph = Ciphersuite::<NistPoint, Sha512>::new(pog.clone(), true);
+        let srv = Server::<NistPoint, Sha512>::setup(ciph.clone());
+        let cli =
+            match Client::<NistPoint, Sha512>::setup(ciph.clone(), Some(srv.key.pub_key(&pog))) {
+                Ok(c) => c,
+                Err(e) => panic!(e),
+            };
 
         end_to_end_voprf(srv, cli, pog, ciph)
     }
 
     #[test]
     fn end_to_end_batch_oprf_p384_old() {
-        let pog = PrimeOrderGroup::<NistPoint,Sha512>::p384_old();
-        let ciph = Ciphersuite::<NistPoint,Sha512>::new(pog.clone(), false);
-        let srv = Server::<NistPoint,Sha512>::setup(ciph.clone());
-        let cli = match Client::<NistPoint,Sha512>::setup(ciph.clone(), None) {
+        let pog = PrimeOrderGroup::<NistPoint, Sha512>::p384_old();
+        let ciph = Ciphersuite::<NistPoint, Sha512>::new(pog.clone(), false);
+        let srv = Server::<NistPoint, Sha512>::setup(ciph.clone());
+        let cli = match Client::<NistPoint, Sha512>::setup(ciph.clone(), None) {
             Ok(c) => c,
             Err(e) => panic!(e),
         };
@@ -572,13 +640,14 @@ mod tests {
 
     #[test]
     fn end_to_end_batch_voprf_p384_old() {
-        let pog = PrimeOrderGroup::<NistPoint,Sha512>::p384_old();
-        let ciph = Ciphersuite::<NistPoint,Sha512>::new(pog.clone(), true);
-        let srv = Server::<NistPoint,Sha512>::setup(ciph.clone());
-        let cli = match Client::<NistPoint,Sha512>::setup(ciph.clone(), Some(srv.key.pub_key(&pog))) {
-            Ok(c) => c,
-            Err(e) => panic!(e),
-        };
+        let pog = PrimeOrderGroup::<NistPoint, Sha512>::p384_old();
+        let ciph = Ciphersuite::<NistPoint, Sha512>::new(pog.clone(), true);
+        let srv = Server::<NistPoint, Sha512>::setup(ciph.clone());
+        let cli =
+            match Client::<NistPoint, Sha512>::setup(ciph.clone(), Some(srv.key.pub_key(&pog))) {
+                Ok(c) => c,
+                Err(e) => panic!(e),
+            };
 
         end_to_end_batch_voprf(srv, cli, pog, ciph)
     }
@@ -590,13 +659,13 @@ mod tests {
         inputs: Vec<String>,
         blinds: Vec<String>,
         dleq_scalar: String,
-        expected: Expected
+        expected: Expected,
     }
 
     #[derive(Clone, Deserialize, Debug)]
     struct Expected {
         outputs: Vec<String>,
-        proof: (String, String)
+        proof: (String, String),
     }
 
     #[test]
@@ -604,14 +673,15 @@ mod tests {
         let tvs = read_test_vectors("VOPRF-curve448-HKDF-SHA512-ELL2-RO");
 
         for tv in tvs {
-            let pog = PrimeOrderGroup::<MPoint,Sha512>::c448();
-            let ciph = Ciphersuite::<MPoint,Sha512>::new(pog.clone(), true);
-            let mut srv = Server::<MPoint,Sha512>::setup(ciph.clone());
+            let pog = PrimeOrderGroup::<MPoint, Sha512>::c448();
+            let ciph = Ciphersuite::<MPoint, Sha512>::new(pog.clone(), true);
+            let mut srv = Server::<MPoint, Sha512>::setup(ciph.clone());
             srv.set_key(hex::decode(&tv.key).unwrap());
-            let cli = match Client::<MPoint,Sha512>::setup(ciph.clone(), Some(srv.key.pub_key(&pog))) {
-                Ok(c) => c,
-                Err(e) => panic!(e),
-            };
+            let cli =
+                match Client::<MPoint, Sha512>::setup(ciph.clone(), Some(srv.key.pub_key(&pog))) {
+                    Ok(c) => c,
+                    Err(e) => panic!(e),
+                };
             batch_oprf_on_testvector::<MPoint, Sha512>(tv, srv, cli);
         }
     }
@@ -621,14 +691,15 @@ mod tests {
         let tvs = read_test_vectors("VOPRF-P384-HKDF-SHA512-SSWU-RO");
 
         for tv in tvs {
-            let pog = PrimeOrderGroup::<WPoint,Sha512>::p384();
-            let ciph = Ciphersuite::<WPoint,Sha512>::new(pog.clone(), true);
-            let mut srv = Server::<WPoint,Sha512>::setup(ciph.clone());
+            let pog = PrimeOrderGroup::<WPoint, Sha512>::p384();
+            let ciph = Ciphersuite::<WPoint, Sha512>::new(pog.clone(), true);
+            let mut srv = Server::<WPoint, Sha512>::setup(ciph.clone());
             srv.set_key(hex::decode(&tv.key).unwrap());
-            let cli = match Client::<WPoint,Sha512>::setup(ciph.clone(), Some(srv.key.pub_key(&pog))) {
-                Ok(c) => c,
-                Err(e) => panic!(e),
-            };
+            let cli =
+                match Client::<WPoint, Sha512>::setup(ciph.clone(), Some(srv.key.pub_key(&pog))) {
+                    Ok(c) => c,
+                    Err(e) => panic!(e),
+                };
             batch_oprf_on_testvector::<WPoint, Sha512>(tv, srv, cli);
         }
     }
@@ -638,39 +709,48 @@ mod tests {
         let tvs = read_test_vectors("VOPRF-P521-HKDF-SHA512-SSWU-RO");
 
         for tv in tvs {
-            let pog = PrimeOrderGroup::<WPoint,Sha512>::p521();
-            let ciph = Ciphersuite::<WPoint,Sha512>::new(pog.clone(), true);
-            let mut srv = Server::<WPoint,Sha512>::setup(ciph.clone());
+            let pog = PrimeOrderGroup::<WPoint, Sha512>::p521();
+            let ciph = Ciphersuite::<WPoint, Sha512>::new(pog.clone(), true);
+            let mut srv = Server::<WPoint, Sha512>::setup(ciph.clone());
             srv.set_key(hex::decode(&tv.key).unwrap());
-            let cli = match Client::<WPoint,Sha512>::setup(ciph.clone(), Some(srv.key.pub_key(&pog))) {
-                Ok(c) => c,
-                Err(e) => panic!(e),
-            };
+            let cli =
+                match Client::<WPoint, Sha512>::setup(ciph.clone(), Some(srv.key.pub_key(&pog))) {
+                    Ok(c) => c,
+                    Err(e) => panic!(e),
+                };
             batch_oprf_on_testvector::<WPoint, Sha512>(tv, srv, cli);
         }
     }
 
     fn read_test_vectors(name: &str) -> Vec<TestVector> {
-        serde_json::from_str(&fs::read_to_string(
-            format!("../test-vectors/{}.json", name)
-            ).unwrap()).unwrap()
+        serde_json::from_str(&fs::read_to_string(format!("../test-vectors/{}.json", name)).unwrap())
+            .unwrap()
     }
 
-    fn batch_oprf_on_testvector<T, H>(tv: TestVector, srv: Server<T,H>, cli: Client<T,H>)
-        where  Input<T>: Clone, Evaluation<T>: Clone, T: Clone, H: Clone
-                + digest::BlockInput + digest::FixedOutput + digest::Input
-                + digest::Reset + std::default::Default,
-                PrimeOrderGroup<T, H>: Supported, Client<T,H>: Clone {
+    fn batch_oprf_on_testvector<T, H>(tv: TestVector, srv: Server<T, H>, cli: Client<T, H>)
+    where
+        Input<T>: Clone,
+        Evaluation<T>: Clone,
+        T: Clone,
+        H: Clone
+            + digest::BlockInput
+            + digest::FixedOutput
+            + digest::Input
+            + digest::Reset
+            + std::default::Default,
+        PrimeOrderGroup<T, H>: Supported,
+        Client<T, H>: Clone,
+    {
         // generate blinded input
         let mut blinded_inputs: Vec<Input<T>> = Vec::new();
         for (input, blind) in tv.inputs.into_iter().zip(tv.blinds) {
             let input = hex::decode(input).unwrap();
             let blind = hex::decode(blind).unwrap();
             let blinded_input = cli.blind_fixed(&input, &blind);
-            blinded_inputs.push(Input{
+            blinded_inputs.push(Input {
                 data: input,
                 elem: blinded_input,
-                blind: blind
+                blind: blind,
             });
         }
 
@@ -695,23 +775,41 @@ mod tests {
                 // finalize
                 for i in 0..blinded_inputs.len() {
                     let input_data = &blinded_inputs[i].data;
-                    let out = cli.finalize(&input_data, &u[i], &aux_data.as_bytes()).expect("Error in finalizing");
+                    let out = cli
+                        .finalize(&input_data, &u[i], &aux_data.as_bytes())
+                        .expect("Error in finalizing");
                     outputs.push(hex::encode(out));
                 }
-            },
-            Err(e) => panic!(e)
+            }
+            Err(e) => panic!(e),
         };
 
         let proof = &eval.proof.unwrap();
         assert_eq!(tv.expected.outputs, outputs);
-        assert_eq!(tv.expected.proof, (hex::encode(&proof[0]), hex::encode(&proof[1])));
+        assert_eq!(
+            tv.expected.proof,
+            (hex::encode(&proof[0]), hex::encode(&proof[1]))
+        );
     }
 
-    fn end_to_end_oprf<T,H>(srv: Server<T,H>, cli: Client<T,H>, pog: PrimeOrderGroup<T,H>, ciph: Ciphersuite<T,H>)
-            where  Input<T>: Clone, Evaluation<T>: Clone, T: Clone, H: Clone
-            + digest::BlockInput + digest::FixedOutput + digest::Input
-            + digest::Reset + std::default::Default,
-            PrimeOrderGroup<T, H>: Supported, Client<T,H>: Clone {
+    fn end_to_end_oprf<T, H>(
+        srv: Server<T, H>,
+        cli: Client<T, H>,
+        pog: PrimeOrderGroup<T, H>,
+        ciph: Ciphersuite<T, H>,
+    ) where
+        Input<T>: Clone,
+        Evaluation<T>: Clone,
+        T: Clone,
+        H: Clone
+            + digest::BlockInput
+            + digest::FixedOutput
+            + digest::Input
+            + digest::Reset
+            + std::default::Default,
+        PrimeOrderGroup<T, H>: Supported,
+        Client<T, H>: Clone,
+    {
         // generate and blind a token
         let mut x: Vec<u8> = Vec::new();
         (pog.uniform_bytes)(&mut x);
@@ -728,11 +826,24 @@ mod tests {
         unblind_and_check(srv, &cli, &ciph, input_vec, &eval);
     }
 
-    fn end_to_end_batch_oprf<T,H>(srv: Server<T,H>, cli: Client<T,H>, pog: PrimeOrderGroup<T,H>, ciph: Ciphersuite<T,H>)
-            where  Input<T>: Clone, Evaluation<T>: Clone, T: Clone, H: Clone
-            + digest::BlockInput + digest::FixedOutput + digest::Input
-            + digest::Reset + std::default::Default,
-            PrimeOrderGroup<T, H>: Supported, Client<T,H>: Clone {
+    fn end_to_end_batch_oprf<T, H>(
+        srv: Server<T, H>,
+        cli: Client<T, H>,
+        pog: PrimeOrderGroup<T, H>,
+        ciph: Ciphersuite<T, H>,
+    ) where
+        Input<T>: Clone,
+        Evaluation<T>: Clone,
+        T: Clone,
+        H: Clone
+            + digest::BlockInput
+            + digest::FixedOutput
+            + digest::Input
+            + digest::Reset
+            + std::default::Default,
+        PrimeOrderGroup<T, H>: Supported,
+        Client<T, H>: Clone,
+    {
         // generate and blind a token
         let mut input_data_vec = Vec::new();
         let mut x: Vec<u8> = Vec::new();
@@ -757,11 +868,24 @@ mod tests {
         unblind_and_check(srv, &cli, &ciph, input_vec, &eval);
     }
 
-    fn end_to_end_voprf<T,H>(srv: Server<T,H>, cli: Client<T,H>, pog: PrimeOrderGroup<T,H>, ciph: Ciphersuite<T,H>)
-            where  Input<T>: Clone, Evaluation<T>: Clone, T: Clone, H: Clone
-            + digest::BlockInput + digest::FixedOutput + digest::Input
-            + digest::Reset + std::default::Default,
-            PrimeOrderGroup<T, H>: Supported, Client<T,H>: Clone {
+    fn end_to_end_voprf<T, H>(
+        srv: Server<T, H>,
+        cli: Client<T, H>,
+        pog: PrimeOrderGroup<T, H>,
+        ciph: Ciphersuite<T, H>,
+    ) where
+        Input<T>: Clone,
+        Evaluation<T>: Clone,
+        T: Clone,
+        H: Clone
+            + digest::BlockInput
+            + digest::FixedOutput
+            + digest::Input
+            + digest::Reset
+            + std::default::Default,
+        PrimeOrderGroup<T, H>: Supported,
+        Client<T, H>: Clone,
+    {
         // generate and blind a token
         let mut x: Vec<u8> = Vec::new();
         (pog.uniform_bytes)(&mut x);
@@ -780,11 +904,24 @@ mod tests {
         unblind_and_check(srv, &cli, &ciph, input_vec, &eval);
     }
 
-    fn end_to_end_batch_voprf<T,H>(srv: Server<T,H>, cli: Client<T,H>, pog: PrimeOrderGroup<T,H>, ciph: Ciphersuite<T,H>)
-            where  Input<T>: Clone, Evaluation<T>: Clone, T: Clone, H: Clone
-            + digest::BlockInput + digest::FixedOutput + digest::Input
-            + digest::Reset + std::default::Default,
-            PrimeOrderGroup<T, H>: Supported, Client<T,H>: Clone {
+    fn end_to_end_batch_voprf<T, H>(
+        srv: Server<T, H>,
+        cli: Client<T, H>,
+        pog: PrimeOrderGroup<T, H>,
+        ciph: Ciphersuite<T, H>,
+    ) where
+        Input<T>: Clone,
+        Evaluation<T>: Clone,
+        T: Clone,
+        H: Clone
+            + digest::BlockInput
+            + digest::FixedOutput
+            + digest::Input
+            + digest::Reset
+            + std::default::Default,
+        PrimeOrderGroup<T, H>: Supported,
+        Client<T, H>: Clone,
+    {
         // generate and blind a token
         let mut input_data_vec = Vec::new();
         let mut x: Vec<u8> = Vec::new();
@@ -811,11 +948,25 @@ mod tests {
         unblind_and_check(srv, &cli, &ciph, input_vec, &eval);
     }
 
-    fn unblind_and_check<T,H>(srv: Server<T,H>, cli: &Client<T,H>, ciph: &Ciphersuite<T,H>, input_vec: Vec<Input<T>>, eval: &Evaluation<T>)
-            where Input<T>: Clone, Evaluation<T>: Clone, T: Clone, H: Clone
-            + digest::BlockInput + digest::FixedOutput + digest::Input
-            + digest::Reset + std::default::Default,
-            PrimeOrderGroup<T, H>: Supported, Client<T,H>: Clone {
+    fn unblind_and_check<T, H>(
+        srv: Server<T, H>,
+        cli: &Client<T, H>,
+        ciph: &Ciphersuite<T, H>,
+        input_vec: Vec<Input<T>>,
+        eval: &Evaluation<T>,
+    ) where
+        Input<T>: Clone,
+        Evaluation<T>: Clone,
+        T: Clone,
+        H: Clone
+            + digest::BlockInput
+            + digest::FixedOutput
+            + digest::Input
+            + digest::Reset
+            + std::default::Default,
+        PrimeOrderGroup<T, H>: Supported,
+        Client<T, H>: Clone,
+    {
         // unblind server evaluation
         match cli.unblind(&input_vec, eval) {
             Ok(u) => {
@@ -824,29 +975,43 @@ mod tests {
                     let input_data = &input_vec[i].data;
                     finalization_check(cli, &sk, ciph, input_data, &u[i]);
                 }
-            },
-            Err(e) => panic!(e)
+            }
+            Err(e) => panic!(e),
         }
     }
 
-    fn finalization_check<T,H>(cli: &Client<T,H>, sk: &[u8], ciph: &Ciphersuite<T,H>, input_data: &[u8], evals: &T)
-            where Input<T>: Clone, Evaluation<T>: Clone, T: Clone, H: Clone
-            + digest::BlockInput + digest::FixedOutput + digest::Input
-            + digest::Reset + std::default::Default,
-            PrimeOrderGroup<T, H>: Supported, Client<T,H>: Clone {
+    fn finalization_check<T, H>(
+        cli: &Client<T, H>,
+        sk: &[u8],
+        ciph: &Ciphersuite<T, H>,
+        input_data: &[u8],
+        evals: &T,
+    ) where
+        Input<T>: Clone,
+        Evaluation<T>: Clone,
+        T: Clone,
+        H: Clone
+            + digest::BlockInput
+            + digest::FixedOutput
+            + digest::Input
+            + digest::Reset
+            + std::default::Default,
+        PrimeOrderGroup<T, H>: Supported,
+        Client<T, H>: Clone,
+    {
         // finalize output
         let aux = b"auxiliary_data";
         let out = match cli.finalize(&input_data, &evals, aux) {
             Ok(o) => o,
-            Err(e) => panic!(e)
+            Err(e) => panic!(e),
         };
 
         // check output with server (without blinding)
-        let ge = ciph.h1(&input_data);
+        let ge = ciph.h1(&input_data, cli.get_dst().as_bytes());
         let chk_eval = (ciph.pog.scalar_mult)(&ge, &sk);
         let chk_out = match cli.finalize(&input_data, &chk_eval, aux) {
             Ok(o) => o,
-            Err(e) => panic!(e)
+            Err(e) => panic!(e),
         };
 
         // check that the outputs are consistent

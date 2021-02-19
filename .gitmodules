@@ -2,6 +2,3 @@
 	path = rust/ecc-rs
 	url = https://github.com/alxdavids/ecc-rs/
 	branch = master
-[submodule "./rust/h2c-rust-ref"]
-	path = rust/h2c-rust-ref
-	url = https://github.com/armfazh/h2c-rust-ref

@@ -8,20 +8,20 @@
 //! let pog = PrimeOrderGroup::p384_old();
 //! ```
 
-use super::{PrimeOrderGroup,GroupID};
 use super::super::super::utils::copy_into;
+use super::{GroupID, PrimeOrderGroup};
 use hkdf_sha512::Hkdf;
 
 use ecc_rs::point::AffinePoint;
-use ecc_rs::point::{P384,Encoded};
+use ecc_rs::point::{Encoded, P384};
 
-use sha2::Sha512;
-use sha2::Digest;
 use byteorder::{BigEndian, WriteBytesExt};
+use num::{BigInt, BigUint};
+use num_bigint::Sign;
 use rand_core::OsRng;
 use rand_core::RngCore;
-use num::{BigInt,BigUint};
-use num_bigint::Sign;
+use sha2::Digest;
+use sha2::Sha512;
 
 const P384_BYTE_LENGTH: usize = 48;
 
@@ -29,7 +29,7 @@ const P384_BYTE_LENGTH: usize = 48;
 pub type NistPoint = AffinePoint<Encoded>;
 
 /// Instantiation of `PrimeOrderGroup` for NIST P-384 curve
-impl PrimeOrderGroup<NistPoint,Sha512> {
+impl PrimeOrderGroup<NistPoint, Sha512> {
     /// Returns an instance of PrimeOrderGroup that allows performing (V)OPRF
     /// operations using the prime-order group associated the NIST P-384 curve.
     ///
@@ -39,53 +39,90 @@ impl PrimeOrderGroup<NistPoint,Sha512> {
     /// use voprf_rs::oprf::groups::PrimeOrderGroup;
     /// let pog = PrimeOrderGroup::p384_old();
     /// ```
-    pub fn p384_old() -> PrimeOrderGroup<NistPoint,Sha512> {
-        PrimeOrderGroup{
+    pub fn p384_old() -> PrimeOrderGroup<NistPoint, Sha512> {
+        PrimeOrderGroup {
             group_id: GroupID::P384Old,
             generator: NistPoint::get_generator(P384).unwrap(),
             byte_length: P384_BYTE_LENGTH,
             hash: || p384_hash(),
             deserialize: |buf: &[u8]| NistPoint::new(P384).unwrap().deserialize(buf),
-            encode_to_group: |buf: &[u8]| NistPoint::new(P384).unwrap().hash_to_curve(buf, "RFCXXXX-VOPRF".to_string()),
+            encode_to_group: |buf: &[u8], _dst: &[u8]| {
+                NistPoint::new(P384)
+                    .unwrap()
+                    .hash_to_curve(buf, "RFCXXXX-VOPRF".to_string())
+            },
             is_valid: |p: &NistPoint| p.is_valid(),
             is_equal: |p1: &NistPoint, p2: &NistPoint| p1.equals(p2),
-            add: |p1: &NistPoint, p2: &NistPoint| p1.to_jacobian().add(&p2.to_jacobian()).to_affine(),
+            add: |p1: &NistPoint, p2: &NistPoint| {
+                p1.to_jacobian().add(&p2.to_jacobian()).to_affine()
+            },
             scalar_mult: |p: &NistPoint, r: &[u8]| p.scalar_mul(r).to_affine(),
             inverse_mult: |p: &NistPoint, r: &[u8]| p.inv_scalar_mul(r).to_affine(),
-            serialize: |p: &NistPoint, compress: bool, out: &mut Vec<u8>| nist_serialize(p, compress, out),
+            serialize: |p: &NistPoint, compress: bool, out: &mut Vec<u8>| {
+                nist_serialize(p, compress, out)
+            },
             random_element: || {
                 let mut rng = OsRng;
                 let mut alpha = vec![0; P384_BYTE_LENGTH];
                 rng.fill_bytes(&mut alpha);
-                NistPoint::new(P384).unwrap().hash_to_curve(&alpha, "RFCXXXX-VOPRF".to_string())
+                NistPoint::new(P384)
+                    .unwrap()
+                    .hash_to_curve(&alpha, "RFCXXXX-VOPRF".to_string())
             },
             uniform_bytes: |out: &mut Vec<u8>| {
-                let bytes = NistPoint::new(P384).unwrap()
-                                        .uniform_bytes_from_field().unwrap();
+                let bytes = NistPoint::new(P384)
+                    .unwrap()
+                    .uniform_bytes_from_field()
+                    .unwrap();
                 copy_into(&bytes, out);
             },
-            reduce_scalar: |sc: &[u8], pve: bool| NistPoint::new(P384).unwrap()
-                                                        .reduce_scalar(sc, pve),
+            reduce_scalar: |sc: &[u8], pve: bool| {
+                NistPoint::new(P384).unwrap().reduce_scalar(sc, pve)
+            },
             // DLEQ functions
-            dleq_generate: |key: &[u8], pub_key: &NistPoint, input: &NistPoint, eval: &NistPoint| -> [Vec<u8>; 2] {
+            dleq_generate: |key: &[u8],
+                            pub_key: &NistPoint,
+                            input: &NistPoint,
+                            eval: &NistPoint|
+             -> [Vec<u8>; 2] {
                 p384_dleq_gen(key, pub_key, input, eval)
             },
-            dleq_verify: |pub_key: &NistPoint, input: &NistPoint, eval: &NistPoint, proof: &[Vec<u8>; 2]| {
+            dleq_verify: |pub_key: &NistPoint,
+                          input: &NistPoint,
+                          eval: &NistPoint,
+                          proof: &[Vec<u8>; 2]| {
                 p384_dleq_vrf(pub_key, input, eval, proof)
             },
-            batch_dleq_generate: |key: &[u8], pub_key: &NistPoint, inputs: &[NistPoint], evals: &[NistPoint]| -> [Vec<u8>; 2] {
+            batch_dleq_generate: |key: &[u8],
+                                  pub_key: &NistPoint,
+                                  inputs: &[NistPoint],
+                                  evals: &[NistPoint]|
+             -> [Vec<u8>; 2] {
                 let [comp_m, comp_z] = p384_batch_compute_composities(pub_key, inputs, evals);
                 p384_dleq_gen(key, pub_key, &comp_m, &comp_z)
             },
-            batch_dleq_verify: |pub_key: &NistPoint, inputs: &[NistPoint], evals: &[NistPoint], proof: &[Vec<u8>; 2]| {
+            batch_dleq_verify: |pub_key: &NistPoint,
+                                inputs: &[NistPoint],
+                                evals: &[NistPoint],
+                                proof: &[Vec<u8>; 2]| {
                 let [comp_m, comp_z] = p384_batch_compute_composities(pub_key, inputs, evals);
                 p384_dleq_vrf(pub_key, &comp_m, &comp_z, proof)
             },
             // DLEQ functions for testing
-            fixed_dleq_generate: |key: &[u8], pub_key: &NistPoint, input: &NistPoint, eval: &NistPoint, fixed_scalar: &[u8]| -> [Vec<u8>; 2] {
+            fixed_dleq_generate: |key: &[u8],
+                                  pub_key: &NistPoint,
+                                  input: &NistPoint,
+                                  eval: &NistPoint,
+                                  fixed_scalar: &[u8]|
+             -> [Vec<u8>; 2] {
                 p384_fixed_dleq_gen(key, pub_key, input, eval, fixed_scalar)
             },
-            fixed_batch_dleq_generate: |key: &[u8], pub_key: &NistPoint, inputs: &[NistPoint], evals: &[NistPoint], fixed_scalar: &[u8]| -> [Vec<u8>; 2] {
+            fixed_batch_dleq_generate: |key: &[u8],
+                                        pub_key: &NistPoint,
+                                        inputs: &[NistPoint],
+                                        evals: &[NistPoint],
+                                        fixed_scalar: &[u8]|
+             -> [Vec<u8>; 2] {
                 let [comp_m, comp_z] = p384_batch_compute_composities(pub_key, inputs, evals);
                 p384_fixed_dleq_gen(key, pub_key, &comp_m, &comp_z, fixed_scalar)
             },
@@ -100,14 +137,25 @@ fn nist_serialize(p: &NistPoint, compress: bool, out: &mut Vec<u8>) {
 }
 
 // generates a DLEQ proof object for NistPoint objects
-fn p384_dleq_gen(key: &[u8], pub_key: &NistPoint, input: &NistPoint, eval: &NistPoint) -> [Vec<u8>; 2] {
+fn p384_dleq_gen(
+    key: &[u8],
+    pub_key: &NistPoint,
+    input: &NistPoint,
+    eval: &NistPoint,
+) -> [Vec<u8>; 2] {
     let mut t: Vec<u8> = Vec::new();
     p384_sample_uniform_bytes(&mut t);
     p384_fixed_dleq_gen(key, pub_key, input, eval, &t)
 }
 
 // generates a DLEQ proof object for NistPoint objects with fixed scalar input
-fn p384_fixed_dleq_gen(key: &[u8], pub_key: &NistPoint, input: &NistPoint, eval: &NistPoint, t: &[u8]) -> [Vec<u8>; 2] {
+fn p384_fixed_dleq_gen(
+    key: &[u8],
+    pub_key: &NistPoint,
+    input: &NistPoint,
+    eval: &NistPoint,
+    t: &[u8],
+) -> [Vec<u8>; 2] {
     let gen = NistPoint::get_generator(P384).unwrap();
     let a = gen.scalar_mul(t).to_affine();
     let b = input.scalar_mul(t).to_affine();
@@ -118,10 +166,18 @@ fn p384_fixed_dleq_gen(key: &[u8], pub_key: &NistPoint, input: &NistPoint, eval:
     let k_sc = BigInt::from_bytes_be(Sign::Plus, &key);
     let s_sc = t_sc - (c_sc * k_sc);
     let (bi_sgn, bytes) = s_sc.to_bytes_be();
-    [gen.reduce_scalar(&c, true), gen.reduce_scalar(&bytes, bi_sgn == Sign::Plus)]
+    [
+        gen.reduce_scalar(&c, true),
+        gen.reduce_scalar(&bytes, bi_sgn == Sign::Plus),
+    ]
 }
 
-fn p384_dleq_vrf(pub_key: &NistPoint, input: &NistPoint, eval: &NistPoint, proof: &[Vec<u8>; 2]) -> bool {
+fn p384_dleq_vrf(
+    pub_key: &NistPoint,
+    input: &NistPoint,
+    eval: &NistPoint,
+    proof: &[Vec<u8>; 2],
+) -> bool {
     let g = NistPoint::get_generator(P384).unwrap();
     let c_proof = &proof[0];
     let s_proof = &proof[1];
@@ -136,7 +192,11 @@ fn p384_dleq_vrf(pub_key: &NistPoint, input: &NistPoint, eval: &NistPoint, proof
     return c_proof == &g.reduce_scalar(&c_vrf, true);
 }
 
-fn p384_batch_compute_composities(pub_key: &NistPoint, inputs: &[NistPoint], evals: &[NistPoint]) -> [NistPoint; 2] {
+fn p384_batch_compute_composities(
+    pub_key: &NistPoint,
+    inputs: &[NistPoint],
+    evals: &[NistPoint],
+) -> [NistPoint; 2] {
     assert_eq!(inputs.len(), evals.len());
     let mut seed: Vec<u8> = Vec::new();
     p384_batch_dleq_seed(pub_key, inputs, evals, &mut seed);
@@ -158,7 +218,11 @@ fn p384_dleq_hash(to_hash: &[&NistPoint], out: &mut Vec<u8>) {
 
 // computes composite ristretto255 points that are used in batch DLEQ proofs
 // TODO: add these to the impl of some utility struct?
-fn p384_compute_composites(seed: &[u8], inputs: &[NistPoint], evals: &[NistPoint]) -> [NistPoint; 2] {
+fn p384_compute_composites(
+    seed: &[u8],
+    inputs: &[NistPoint],
+    evals: &[NistPoint],
+) -> [NistPoint; 2] {
     // init these with dummy values
     let p = NistPoint::new(P384).unwrap();
     let mut comp_m = p.to_jacobian();
@@ -176,7 +240,7 @@ fn p384_compute_composites(seed: &[u8], inputs: &[NistPoint], evals: &[NistPoint
 
         // sample coefficient
         let mut d_i = vec![0; P384_BYTE_LENGTH];
-        Hkdf{}.expand(seed, &ctr_vec, &mut d_i);
+        Hkdf {}.expand(seed, &ctr_vec, &mut d_i);
         // reject if greater than N
         if !verify_scalar_size(&d_i) {
             continue;
@@ -190,7 +254,7 @@ fn p384_compute_composites(seed: &[u8], inputs: &[NistPoint], evals: &[NistPoint
         };
         comp_m = m_i;
         comp_z = z_i;
-        i = i+1;
+        i = i + 1;
     }
     [comp_m.to_affine(), comp_z.to_affine()]
 }
@@ -209,7 +273,10 @@ fn p384_batch_dleq_seed(y: &NistPoint, m: &[NistPoint], z: &[NistPoint], out: &m
 // Samples bytes uniformly corresponding to scalars in the base field associated
 // with P-384
 fn p384_sample_uniform_bytes(out: &mut Vec<u8>) {
-    let bytes = NistPoint::new(P384).unwrap().uniform_bytes_from_field().unwrap();
+    let bytes = NistPoint::new(P384)
+        .unwrap()
+        .uniform_bytes_from_field()
+        .unwrap();
     copy_into(&bytes, out)
 }
 
@@ -224,9 +291,9 @@ fn compute_expanded_dleq_challenge(inputs: &[&NistPoint], c: &mut Vec<u8>) {
         let mut info = Vec::new();
         info.write_u32::<BigEndian>(ctr as u32).unwrap();
         info.extend_from_slice(&label);
-        Hkdf{}.expand(&seed, &info, c);
+        Hkdf {}.expand(&seed, &info, c);
         if !(verify_scalar_size(c)) {
-            ctr = ctr+1;
+            ctr = ctr + 1;
             continue;
         }
         break;
@@ -258,8 +325,7 @@ mod tests {
         let p = (pog.random_element)();
         let mut ser: Vec<u8> = Vec::new();
         (pog.serialize)(&p, true, &mut ser);
-        let p_chk = (pog.deserialize)(&ser)
-                        .expect("Failed to deserialize point");
+        let p_chk = (pog.deserialize)(&ser).expect("Failed to deserialize point");
         assert!(p.equals(&p_chk))
     }
 
@@ -271,13 +337,13 @@ mod tests {
         let mut ser: Vec<u8> = Vec::new();
         (pog.serialize)(&(pog.random_element)(), true, &mut ser);
         // modify the buffer
-        ser[0] = ser[0]+1;
-        ser[1] = ser[1]+1;
-        ser[2] = ser[2]+1;
-        ser[3] = ser[3]+1;
+        ser[0] = ser[0] + 1;
+        ser[1] = ser[1] + 1;
+        ser[2] = ser[2] + 1;
+        ser[3] = ser[3] + 1;
         match (pog.deserialize)(&ser) {
             Ok(_) => panic!("test should have failed"),
-            _ => assert!(true)
+            _ => assert!(true),
         }
     }
 
@@ -302,16 +368,16 @@ mod tests {
     #[test]
     fn p384_encode_to_group() {
         let pog = PrimeOrderGroup::p384_old();
-        let buf: [u8; 32] = [0; 32];
-        let p = (pog.encode_to_group)(&buf);
+        let msg: [u8; 32] = [0; 32];
+        let dst: [u8; 32] = [0; 32];
+        let p = (pog.encode_to_group)(&msg, &dst);
         let mut ser: Vec<u8> = Vec::new();
         (pog.serialize)(&p, true, &mut ser);
         // TODO: use official test vector
-        let test_arr: [u8; 1+P384_BYTE_LENGTH] = [
-            3, 51, 64, 101, 130, 28, 15, 150, 165, 237, 149, 238, 250,
-            119, 10, 66, 138, 184, 105, 79, 130, 49, 134, 39, 251, 135,
-            93, 198, 174, 115, 240, 73, 218, 116, 76, 210, 232, 7, 41,
-            173, 220, 224, 221, 156, 121, 28, 214, 145, 61
+        let test_arr: [u8; 1 + P384_BYTE_LENGTH] = [
+            3, 51, 64, 101, 130, 28, 15, 150, 165, 237, 149, 238, 250, 119, 10, 66, 138, 184, 105,
+            79, 130, 49, 134, 39, 251, 135, 93, 198, 174, 115, 240, 73, 218, 116, 76, 210, 232, 7,
+            41, 173, 220, 224, 221, 156, 121, 28, 214, 145, 61,
         ];
         assert_eq!(ser, test_arr.to_vec())
     }
@@ -381,7 +447,10 @@ mod tests {
         assert_eq!(proof.len(), 2);
 
         // verify proof
-        assert_eq!((pog.batch_dleq_verify)(&pub_key, &inputs, &evals, &proof), true);
+        assert_eq!(
+            (pog.batch_dleq_verify)(&pub_key, &inputs, &evals, &proof),
+            true
+        );
     }
 
     #[test]
@@ -441,7 +510,10 @@ mod tests {
         assert_eq!(proof.len(), 2);
 
         // verify proof
-        assert_eq!((pog.batch_dleq_verify)(&pub_key, &inputs, &evals, &proof), false);
+        assert_eq!(
+            (pog.batch_dleq_verify)(&pub_key, &inputs, &evals, &proof),
+            false
+        );
     }
 
     // converts a slice into an array of size P384_BYTE_LENGTH

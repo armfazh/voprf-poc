@@ -13,7 +13,7 @@ macro_rules! point_serialize {
         let p_clone = $p.clone();
         let bytes = p_clone.encode($compress);
         copy_into(&bytes, $out);
-    }}
+    }};
 }
 
 /// returns the number of bytes used to express field elements
@@ -26,8 +26,8 @@ macro_rules! point_serialize {
 /// where `Curve` implements `redox_ecc::ellipticcurve::EllipticCurve`
 macro_rules! field_byte_length {
     ($curve:expr) => {
-        ($curve.get_field().get_modulus().bits()+7)/8
-    }
+        ($curve.get_field().get_modulus().bits() + 7) / 8
+    };
 }
 
 /// returns the number of bytes used to express scalars associated with
@@ -40,8 +40,8 @@ macro_rules! field_byte_length {
 /// where `Curve` implements `redox_ecc::ellipticcurve::EllipticCurve`
 macro_rules! scalar_byte_length {
     ($curve:expr) => {
-        ($curve.get_order().bits()+7)/8
-    }
+        ($curve.get_order().bits() + 7) / 8
+    };
 }
 
 /// hashes bytes to a curve
@@ -55,20 +55,20 @@ macro_rules! hash_to_curve {
         let mut p = h.hash($buf);
         p.normalize();
         p
-    }}
+    }};
 }
 
 /// generates a DLEQ proof object for Point objects
 ///
 /// # Function signature
 ///
-/// `fn dleq_gen(curve: &Curve, key: &[u8], pub_key: &Point, input: &Point, eval: &Point) -> [Vec<u8>; 2]`
+/// `fn dleq_gen(curve: &Curve, key: &[u8], pub_key: &Point, input: &Point, eval: &Point, hFunc:) -> [Vec<u8>; 2]`
 macro_rules! dleq_gen {
-    ($curve:expr, $key:expr, $pub_key:expr, $input:expr, $eval:expr) => {{
+    ($curve:expr, $key:expr, $pub_key:expr, $input:expr, $eval:expr, $hFunc:expr) => {{
         let mut t: Vec<u8> = Vec::new();
         fill_uniform_bytes!($curve, &mut t);
-        fixed_dleq_gen!($curve, $key, $pub_key, $input, $eval, &t)
-    }}
+        fixed_dleq_gen!($curve, $key, $pub_key, $input, $eval, &t, $hFunc)
+    }};
 }
 
 /// generates a DLEQ proof object for Point objects with fixed
@@ -78,18 +78,23 @@ macro_rules! dleq_gen {
 ///
 /// `fn fixed_dleq_gen(curve: &Curve, key: &[u8], pub_key: &Point, input: &Point, eval: &Point, t: &[u8]) -> [Vec<u8>; 2]`
 macro_rules! fixed_dleq_gen {
-    ($curve:expr, $key:expr, $pub_key:expr, $input:expr, $eval:expr, $t:expr) => {{
+    ($curve:expr, $key:expr, $pub_key:expr, $input:expr, $eval:expr, $t:expr, $hFunc:expr) => {{
         let gen = $curve.get_generator();
         let t_sc = to_scalar!($curve, $t);
         let a = &gen * &t_sc;
         let b = $input * &t_sc;
         let mut c = vec![0; scalar_byte_length!($curve)];
-        compute_expanded_dleq_challenge!($curve, &[$pub_key, $input, $eval, &a, &b], &mut c);
+        compute_expanded_dleq_challenge!(
+            $curve,
+            &[$pub_key, $input, $eval, &a, &b],
+            &mut c,
+            $hFunc
+        );
         let c_sc = to_scalar!($curve, &c);
         let k_sc = to_scalar!($curve, $key);
         let s_sc = t_sc - (c_sc * k_sc);
         [c, s_sc.to_bytes_be()]
-    }}
+    }};
 }
 
 /// converts a u8 value into a redox scalar for internal operations
@@ -100,7 +105,7 @@ macro_rules! fixed_dleq_gen {
 macro_rules! to_scalar {
     ($curve:expr, $val:expr) => {
         $curve.new_scalar(BigInt::from_bytes_be(Sign::Plus, $val))
-    }
+    };
 }
 
 /// Samples the random challenge value `c` used in the NI version of the
@@ -110,20 +115,20 @@ macro_rules! to_scalar {
 ///
 /// `fn compute_expanded_dleq_challenge(curve: &Curve, inputs: &[&WPoint], c: &mut Vec<u8>)`
 macro_rules! compute_expanded_dleq_challenge {
-    ($curve:expr, $inputs:expr, $c:expr) => {{
+    ($curve:expr, $inputs:expr, $c:expr, $hFunc:expr) => {{
         let mut seed: Vec<u8> = Vec::new();
-        dleq_hash!($curve, $inputs, &mut seed);
+        dleq_hash!($curve, $inputs, &mut seed, $hFunc);
         let label = "voprf_dleq_challenge".as_bytes();
         let mut ctr = 0;
         loop {
             compute_masked_expansion!($curve, &seed, label, ctr, $c);
             if !(verify_scalar_size!($curve, $c)) {
-                ctr = ctr+1;
+                ctr = ctr + 1;
                 continue;
             }
             break;
         }
-    }}
+    }};
 }
 
 /// hash inputs points for DLEQ proofs into the output buffer `out`
@@ -132,8 +137,8 @@ macro_rules! compute_expanded_dleq_challenge {
 ///
 /// `fn dleq_hash(curve: &Curve, to_hash: &[&Point], out: &mut Vec<u8>)`
 macro_rules! dleq_hash {
-    ($curve:expr, $to_hash:expr, $out:expr) => {{
-        let mut hash = hash!();
+    ($curve:expr, $to_hash:expr, $out:expr, $hFunc:expr) => {{
+        let mut hash = $hFunc;
         let mut ser: Vec<u8> = Vec::new();
         point_serialize!($curve.get_generator(), true, &mut ser);
         hash.input(&ser);
@@ -142,7 +147,7 @@ macro_rules! dleq_hash {
             hash.input(&ser);
         }
         copy_into(&hash.result(), $out);
-    }}
+    }};
 }
 
 /// this functions computes a scalar where excess bits are masked off.
@@ -157,9 +162,9 @@ macro_rules! compute_masked_expansion {
         let mut info = Vec::new();
         info.write_u32::<BigEndian>($ctr as u32).unwrap();
         info.extend_from_slice($label);
-        Hkdf{}.expand($seed, &info, $c);
+        Hkdf {}.expand($seed, &info, $c);
         mask_scalar!($curve, $c);
-    }}
+    }};
 }
 
 /// Fills the input slice with random bytes up to the input length
@@ -173,7 +178,7 @@ macro_rules! fill_uniform_bytes {
         let mut alpha = vec![0; scalar_byte_length!($curve)];
         rng.fill_bytes(&mut alpha);
         copy_into(&alpha, $out);
-    }}
+    }};
 }
 
 /// Masks a scalar according to the size of the curve's modulus
@@ -185,7 +190,7 @@ macro_rules! mask_scalar {
     ($curve:expr, $scalar:expr) => {{
         let bit_size = $curve.get_order().bits();
         $scalar[0] = $scalar[0] & CURVE_BITMASK[bit_size % 8];
-    }}
+    }};
 }
 
 /// returns true if the scalar is within the order of the base field, and
@@ -198,7 +203,19 @@ macro_rules! verify_scalar_size {
     ($curve:expr, $c:expr) => {{
         let modulus = $curve.get_order();
         BigUint::from_bytes_be($c) < modulus
-    }}
+    }};
+}
+
+/// returns the associated hash function (SHA256) for working with the
+/// prime-order group
+///
+/// # Function signature
+///
+/// `fn hash256() -> Sha256`
+macro_rules! hash256 {
+    () => {
+        Sha256::new()
+    };
 }
 
 /// returns the associated hash function (SHA512) for working with the
@@ -206,11 +223,11 @@ macro_rules! verify_scalar_size {
 ///
 /// # Function signature
 ///
-/// `fn hash() -> Sha512`
-macro_rules! hash {
+/// `fn hash512() -> Sha512`
+macro_rules! hash512 {
     () => {
         Sha512::new()
-    }
+    };
 }
 
 /// verifies the provided DLEQ proof
@@ -219,7 +236,7 @@ macro_rules! hash {
 ///
 /// `fn dleq_vrf(curve: &Curve, pub_key: &WPoint, input: &WPoint, eval: &WPoint, proof: &[Vec<u8>; 2]) -> bool`
 macro_rules! dleq_vrf {
-    ($curve:expr, $pub_key:expr, $input:expr, $eval:expr, $proof:expr) => {{
+    ($curve:expr, $pub_key:expr, $input:expr, $eval:expr, $proof:expr, $hFunc:expr) => {{
         let gen = $curve.get_generator();
         let c_proof = &$proof[0];
         let s_proof = &$proof[1];
@@ -232,9 +249,14 @@ macro_rules! dleq_vrf {
         let c_z = $eval * &c_sc;
         let b = s_m + c_z;
         let mut c_vrf = vec![0; field_byte_length!($curve)];
-        compute_expanded_dleq_challenge!($curve, &[$pub_key, $input, $eval, &a, &b], &mut c_vrf);
+        compute_expanded_dleq_challenge!(
+            $curve,
+            &[$pub_key, $input, $eval, &a, &b],
+            &mut c_vrf,
+            $hFunc
+        );
         c_proof == &c_vrf
-    }}
+    }};
 }
 
 /// computes composite scalars for batched proof generation/verification
@@ -243,12 +265,12 @@ macro_rules! dleq_vrf {
 ///
 /// `fn batch_compute_composities(curve: &Curve, pub_key: &Point, inputs: &[Point], evals: &[Point]) -> [Point; 2]`
 macro_rules! batch_compute_composities {
-    ($curve:expr, $pub_key:expr, $inputs:expr, $evals:expr) => {{
+    ($curve:expr, $pub_key:expr, $inputs:expr, $evals:expr, $hFunc:expr) => {{
         assert_eq!($inputs.len(), $evals.len());
         let mut seed: Vec<u8> = Vec::new();
-        batch_dleq_seed!($curve, $pub_key, $inputs, $evals, &mut seed);
+        batch_dleq_seed!($curve, $pub_key, $inputs, $evals, &mut seed, $hFunc);
         compute_composites!($curve, &seed, $inputs, $evals)
-    }}
+    }};
 }
 
 /// computes composite curve points that are used in batch DLEQ
@@ -286,10 +308,10 @@ macro_rules! compute_composites {
             };
             comp_m = m_i;
             comp_z = z_i;
-            i = i+1;
+            i = i + 1;
         }
         [comp_m, comp_z]
-    }}
+    }};
 }
 
 /// generates a seed for deriving coefficients that are used to construct
@@ -300,11 +322,11 @@ macro_rules! compute_composites {
 ///
 /// `fn batch_dleq_seed(curve: &Curve, y: &Point, m: &[Point], z: &[Point], out: &mut Vec<u8>)`
 macro_rules! batch_dleq_seed {
-    ($curve:expr, $y:expr, $m:expr, $z:expr, $out:expr) => {{
+    ($curve:expr, $y:expr, $m:expr, $z:expr, $out:expr, $hFunc:expr) => {{
         let mut inputs = Vec::new();
         inputs.push($y);
         inputs.extend($m);
         inputs.extend($z);
-        dleq_hash!($curve, &inputs, $out)
-    }}
+        dleq_hash!($curve, &inputs, $out, $hFunc)
+    }};
 }
